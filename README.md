@@ -109,7 +109,7 @@ flowchart TD
 ### 2. Setup
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/jansetu-dpi-platform.git
+git clone https://github.com/NathN07/jansetu-dpi-platform.git
 cd jansetu-dpi-platform
 
 # Install dependencies
