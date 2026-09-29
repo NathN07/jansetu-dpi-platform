@@ -1,4 +1,3 @@
-import { GoogleGenAI } from '@google/genai';
 import { DetailedProjectReport, IssueCategory, SeverityLevel } from '../types';
 
 const STORAGE_KEY = 'JANSETU_GEMINI_API_KEY';
@@ -23,15 +22,51 @@ export function isLiveAiAvailable(): boolean {
   return getStoredApiKey().length > 10;
 }
 
-function getGeminiClient(): GoogleGenAI | null {
-  const key = getStoredApiKey();
-  if (!key) return null;
-  try {
-    return new GoogleGenAI({ apiKey: key });
-  } catch (err) {
-    console.error('Failed to initialize GoogleGenAI client', err);
-    return null;
+// Resilient REST API caller for Gemini
+async function callGeminiRest(prompt: string, inlineImageData?: { mimeType: string; data: string }): Promise<string | null> {
+  const apiKey = getStoredApiKey();
+  if (!apiKey) return null;
+
+  const models = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-flash-latest'];
+  
+  for (const model of models) {
+    try {
+      const parts: any[] = [];
+      if (inlineImageData) {
+        parts.push({
+          inline_data: {
+            mime_type: inlineImageData.mimeType,
+            data: inlineImageData.data
+          }
+        });
+      }
+      parts.push({ text: prompt });
+
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          contents: [{ parts }]
+        })
+      });
+
+      if (!res.ok) {
+        console.warn(`Gemini model ${model} responded with ${res.status}`);
+        continue;
+      }
+
+      const data = await res.json();
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (text && typeof text === 'string') {
+        return text;
+      }
+    } catch (err) {
+      console.warn(`Error calling Gemini REST ${model}:`, err);
+    }
   }
+  return null;
 }
 
 export interface PhotoAnalysisResult {
@@ -52,124 +87,81 @@ export async function analyzeInfrastructurePhoto(
   mimeType: string,
   hintContext: { title?: string; location?: string } = {}
 ): Promise<PhotoAnalysisResult> {
-  const client = getGeminiClient();
+  const pureBase64 = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
+  const prompt = `
+You are an expert civic infrastructure inspection AI for India's Digital Public Infrastructure (JanSetu AI) and NITI Aayog.
+Analyze this citizen-submitted photograph of an infrastructure defect in India.
+Context hint: Title="${hintContext.title || 'Civic defect'}", Location="${hintContext.location || 'India'}".
 
-  if (client) {
-    try {
-      const prompt = `
-You are an expert civic infrastructure inspection AI working for India's Digital Public Infrastructure (JanSetu AI) and Ministry of Electronics & IT / NITI Aayog.
-Analyze this citizen-submitted photograph of an infrastructure failure or development issue in India.
-Context hint provided by citizen: Title="${hintContext.title || 'Civic defect'}", Location="${hintContext.location || 'India'}".
-
-Output strict valid JSON ONLY with this exact structure:
+Output strict valid JSON ONLY with this structure:
 {
   "verified": true,
   "confidence": 0.96,
-  "detectedDefect": "Brief technical description of visible civil/sanitation/electrical/water defect",
+  "detectedDefect": "Brief technical description of defect",
   "category": "One of: Piped Water / Jal Jeevan Mission, Rural & State Roads / PMGSY, Primary Healthcare / Ayushman Bharat, School Infrastructure / Samagra Shiksha, Power & Solar / PM Surya Ghar, Sanitation & Solid Waste / Swachh Bharat, Flood & Drainage Resilience",
   "severity": "One of: Low, Medium, High, Critical",
   "hazardIndex": 8.7,
-  "recommendedMinistry": "Relevant Central/State Ministry and scheme name",
-  "suggestedTitle": "Professional concise title for the citizen grievance",
-  "notes": "Actionable inspection remarks, risk to public safety, and repair priority"
+  "recommendedMinistry": "Central/State Ministry name",
+  "suggestedTitle": "Short title",
+  "notes": "Actionable inspection remarks"
 }
-Do NOT enclose in markdown backticks, just return raw JSON.`;
+Do NOT include markdown backticks.`;
 
-      const pureBase64 = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
-
-      const response = await client.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                inlineData: {
-                  mimeType: mimeType || 'image/jpeg',
-                  data: pureBase64
-                }
-              },
-              {
-                text: prompt
-              }
-            ]
-          }
-        ]
-      });
-
-      const responseText = response.text || '';
-      const cleanJson = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
+  const apiResponse = await callGeminiRest(prompt, { mimeType: mimeType || 'image/jpeg', data: pureBase64 });
+  if (apiResponse) {
+    try {
+      const cleanJson = apiResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
       const parsed = JSON.parse(cleanJson);
-
       return {
-        verified: Boolean(parsed.verified ?? true),
-        confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.95,
-        detectedDefect: parsed.detectedDefect || 'Visible infrastructure structural defect identified',
+        verified: true,
+        confidence: parsed.confidence || 0.96,
+        detectedDefect: parsed.detectedDefect || 'Structural civil defect identified',
         category: (parsed.category as IssueCategory) || 'Rural & State Roads / PMGSY',
         severity: (parsed.severity as SeverityLevel) || 'High',
-        hazardIndex: typeof parsed.hazardIndex === 'number' ? parsed.hazardIndex : 8.5,
-        recommendedMinistry: parsed.recommendedMinistry || 'Ministry of Rural Development / PMGSY',
-        notes: parsed.notes || 'Verified against satellite and municipal benchmarks.',
+        hazardIndex: parsed.hazardIndex || 8.6,
+        recommendedMinistry: parsed.recommendedMinistry || 'Ministry of Rural Development',
+        notes: parsed.notes || 'Verified against satellite benchmarks.',
         suggestedTitle: parsed.suggestedTitle || hintContext.title || 'Reported Infrastructure Defect',
         isSimulated: false
       };
-    } catch (error) {
-      console.warn('Live Gemini photo analysis failed, falling back to edge inference:', error);
+    } catch (e) {
+      console.warn('Failed parsing Gemini photo response', e);
     }
   }
 
-  // Fallback / mock when API key not yet entered
-  await new Promise((resolve) => setTimeout(resolve, 1400));
-  
+  // Fallback
+  await new Promise((r) => setTimeout(r, 900));
   const hints = (hintContext.title || '').toLowerCase() + ' ' + (hintContext.location || '').toLowerCase();
-  
-  let detectedDefect = 'Visible civil structural fracture with imminent safety hazard';
   let category: IssueCategory = 'Rural & State Roads / PMGSY';
+  let defect = 'Visible civil structural fracture with safety hazard';
   let severity: SeverityLevel = 'High';
   let hazard = 8.6;
-  let ministry = 'Ministry of Rural Development / PMGSY Tier-3';
-  let notes = 'Multi-angle pixel anomaly analysis confirms genuine physical deformation, structural cracking, and pedestrian hazard.';
+  let ministry = 'Ministry of Rural Development / PMGSY';
 
-  if (hints.includes('water') || hints.includes('pipe') || hints.includes('jal') || hints.includes('नल') || hints.includes('पानी')) {
+  if (hints.includes('water') || hints.includes('pipe') || hints.includes('jal') || hints.includes('জল')) {
     category = 'Piped Water / Jal Jeevan Mission';
-    detectedDefect = 'High-pressure distribution main fracture causing localized water loss and contamination risk';
-    hazard = 9.2;
+    defect = 'Potable water supply mainline rupture causing localized contamination risk';
     severity = 'Critical';
+    hazard = 9.3;
     ministry = 'Ministry of Jal Shakti / Jal Jeevan Mission';
-    notes = 'Cross-referenced with regional water-table data. Contamination threat to adjacent residential clusters.';
-  } else if (hints.includes('health') || hints.includes('hospital') || hints.includes('doctor') || hints.includes('दवा') || hints.includes('अस्पताल')) {
+  } else if (hints.includes('health') || hints.includes('hospital') || hints.includes('clinic')) {
     category = 'Primary Healthcare / Ayushman Bharat';
-    detectedDefect = 'Sub-centre clinic structural ceiling damage, compromising sterile medical operations';
-    hazard = 8.9;
+    defect = 'Health sub-centre clinical structural ceiling damage';
     severity = 'Critical';
+    hazard = 9.1;
     ministry = 'Ministry of Health & Family Welfare / PM-ABHIM';
-    notes = 'Requires immediate prefabricated modular clinical restoration to prevent healthcare disruption.';
-  } else if (hints.includes('school') || hints.includes('विद्या') || hints.includes('छात्र') || hints.includes('education')) {
-    category = 'School Infrastructure / Samagra Shiksha';
-    detectedDefect = 'Compromised classroom masonry and non-functional sanitation block';
-    hazard = 8.4;
-    severity = 'High';
-    ministry = 'Department of School Education / Samagra Shiksha';
-    notes = 'High risk to enrolled student safety. Prioritized under PM-SHRI school upgrade norms.';
-  } else if (hints.includes('drain') || hints.includes('waste') || hints.includes('कचरा') || hints.includes('नाली')) {
-    category = 'Sanitation & Solid Waste / Swachh Bharat';
-    detectedDefect = 'Heavy municipal drainage blockage leading to pathogenic vector breeding and stagnant floodwater';
-    hazard = 8.1;
-    severity = 'High';
-    ministry = 'Ministry of Housing and Urban Affairs / Swachh Bharat Mission';
-    notes = 'Automated desilting super-sucker unit requisition generated.';
   }
 
   return {
     verified: true,
     confidence: 0.96,
-    detectedDefect,
+    detectedDefect: defect,
     category,
     severity,
     hazardIndex: hazard,
     recommendedMinistry: ministry,
-    notes,
-    suggestedTitle: hintContext.title || `Identified ${category} Structural Urgent Defect`,
+    notes: 'Multi-angle pixel analysis confirms physical civil defect.',
+    suggestedTitle: hintContext.title || `Reported ${category} Issue`,
     isSimulated: true
   };
 }
@@ -193,106 +185,110 @@ export async function processCitizenVoiceOrText(
   transcript: string,
   statedLangCode?: string
 ): Promise<VoiceTextProcessResult> {
-  const client = getGeminiClient();
+  const prompt = `
+You are the Multilingual Natural Language Understanding engine of JanSetu AI.
+Citizen input: "${transcript}"
+Preferred language code: ${statedLangCode || 'auto'}
 
-  if (client && transcript.trim().length > 3) {
-    try {
-      const prompt = `
-You are the Multilingual Natural Language Understanding engine of JanSetu AI, India's national Digital Public Infrastructure.
-The following is citizen input received via voice transcription or text message across India:
-"${transcript}"
-Preferred/Detected language code: ${statedLangCode || 'auto'}
-
-Analyze the input and return strict valid JSON ONLY with this exact structure:
+Analyze the input and return strict valid JSON ONLY:
 {
-  "translatedText": "Faithful, clear English translation preserving all civic details, locations, and urgency",
-  "detectedLanguage": "e.g., Hindi, Bengali, Tamil, Telugu, Marathi, Kannada, Odia, Gujarati, Punjabi, English",
+  "translatedText": "Clear English translation",
+  "detectedLanguage": "Hindi / Bengali / Tamil / Telugu / Marathi / Kannada / English / etc.",
   "category": "One of: Piped Water / Jal Jeevan Mission, Rural & State Roads / PMGSY, Primary Healthcare / Ayushman Bharat, School Infrastructure / Samagra Shiksha, Power & Solar / PM Surya Ghar, Sanitation & Solid Waste / Swachh Bharat, Flood & Drainage Resilience",
-  "severity": "One of: Low, Medium, High, Critical",
-  "urgencyScore": 88,
+  "severity": "Low / Medium / High / Critical",
+  "urgencyScore": 90,
   "extractedLocation": {
-    "state": "State name if mentioned or implied, else null",
-    "district": "District name if mentioned, else null",
-    "villageOrWard": "Village or ward name if mentioned, else null"
+    "state": "State name if mentioned or implied",
+    "district": "District name if mentioned",
+    "villageOrWard": "Village / ward / area name"
   },
-  "sentimentIntensity": "One of: Moderate, Distressed, Emergency"
+  "sentimentIntensity": "Moderate / Distressed / Emergency"
 }
-Do NOT enclose in markdown backticks, just return raw JSON.`;
+Do NOT include markdown backticks.`;
 
-      const response = await client.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: prompt
-      });
-
-      const cleanJson = (response.text || '').replace(/```json/gi, '').replace(/```/g, '').trim();
+  const apiResponse = await callGeminiRest(prompt);
+  if (apiResponse) {
+    try {
+      const cleanJson = apiResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
       const parsed = JSON.parse(cleanJson);
-
       return {
         translatedText: parsed.translatedText || transcript,
-        detectedLanguage: parsed.detectedLanguage || 'Hindi',
+        detectedLanguage: parsed.detectedLanguage || 'English',
         category: (parsed.category as IssueCategory) || 'Rural & State Roads / PMGSY',
         severity: (parsed.severity as SeverityLevel) || 'High',
-        urgencyScore: typeof parsed.urgencyScore === 'number' ? parsed.urgencyScore : 85,
+        urgencyScore: parsed.urgencyScore || 88,
         extractedLocation: parsed.extractedLocation || {},
         sentimentIntensity: parsed.sentimentIntensity || 'Distressed',
         isSimulated: false
       };
     } catch (e) {
-      console.warn('Gemini text processing fallback:', e);
+      console.warn('Failed parsing Gemini text response', e);
     }
   }
 
-  // Fallback
-  await new Promise((r) => setTimeout(r, 900));
-  const lower = transcript.toLowerCase();
+  // Smart localized fallback parser
+  await new Promise((r) => setTimeout(r, 600));
+  const text = transcript;
+  const lower = text.toLowerCase();
 
+  // Location detection
+  let state = 'Uttar Pradesh';
+  let district = 'Bahraich';
+  let area = '';
+
+  if (lower.includes('west bengal') || lower.includes('bengal') || lower.includes('পশ্চিমবঙ্গ') || lower.includes('বাংলা') || lower.includes('ranaghat') || lower.includes('রানাঘাট') || lower.includes('nadia') || lower.includes('kolkata')) {
+    state = 'West Bengal';
+    district = lower.includes('ranaghat') || lower.includes('রানাঘাট') ? 'Nadia (Ranaghat)' : 'Kolkata';
+    area = lower.includes('ranaghat') ? 'Ranaghat Block' : 'Ward Cluster';
+  } else if (lower.includes('bihar') || lower.includes('बिहार') || lower.includes('patna') || lower.includes('bhojpur')) {
+    state = 'Bihar';
+    district = 'Bhojpur';
+  } else if (lower.includes('odisha') || lower.includes('orissa') || lower.includes('ଓଡ଼ିଆ') || lower.includes('nabarangpur')) {
+    state = 'Odisha';
+    district = 'Nabarangpur';
+  } else if (lower.includes('tamil') || lower.includes('தமிழ்') || lower.includes('chennai')) {
+    state = 'Tamil Nadu';
+    district = 'Ramanathapuram';
+  } else if (lower.includes('maharashtra') || lower.includes('mumbai') || lower.includes('pune')) {
+    state = 'Maharashtra';
+    district = 'Mumbai Suburban';
+  }
+
+  // Category detection
   let category: IssueCategory = 'Rural & State Roads / PMGSY';
   let severity: SeverityLevel = 'High';
-  let urgency = 86;
-  let translatedText = transcript;
-  let detectedLang = 'Hindi';
+  let urgency = 88;
 
-  if (lower.includes('पानी') || lower.includes('water') || lower.includes('नल') || lower.includes('जल') || lower.includes('জল')) {
+  if (lower.includes('water') || lower.includes('पानी') || lower.includes('জল') || lower.includes('pipe') || lower.includes('পুকুর')) {
     category = 'Piped Water / Jal Jeevan Mission';
-    urgency = 94;
     severity = 'Critical';
-    translatedText = 'Report of broken potable water supply network and acute drinking water scarcity affecting village residents. Immediate repair and alternate water tanker provisioning required.';
-  } else if (lower.includes('सड़क') || lower.includes('road') || lower.includes('पुल') || lower.includes('bridge') || lower.includes('रास्ता') || lower.includes('রাস্তা')) {
-    category = 'Rural & State Roads / PMGSY';
-    urgency = 88;
-    severity = 'High';
-    translatedText = 'Key connecting road and culvert severely eroded with hazardous cratering, disrupting ambulance and public transport transit.';
-  } else if (lower.includes('अस्पताल') || lower.includes('hospital') || lower.includes('स्वास्थ्य') || lower.includes('डॉक्टर') || lower.includes('doctor')) {
+    urgency = 95;
+  } else if (lower.includes('hospital') || lower.includes('स्वास्थ्य') || lower.includes('doctor') || lower.includes('হাসপাতাল')) {
     category = 'Primary Healthcare / Ayushman Bharat';
-    urgency = 92;
     severity = 'Critical';
-    translatedText = 'Primary health center building damaged with no operational maternity or emergency diagnostic facility for pregnant women and senior citizens.';
-  } else if (lower.includes('स्कूल') || lower.includes('school') || lower.includes('शिक्षक') || lower.includes('बच्चे')) {
+    urgency = 93;
+  } else if (lower.includes('school') || lower.includes('स्कूल') || lower.includes('বিদ্যালয়')) {
     category = 'School Infrastructure / Samagra Shiksha';
-    urgency = 82;
-    severity = 'Medium';
-    translatedText = 'Government school building requires urgent structural roof repairs, clean drinking water taps, and segregated sanitation blocks for female students.';
-  } else {
-    translatedText = `Citizens report critical public infrastructure inadequacy requiring priority intervention: "${transcript}"`;
+    severity = 'High';
+    urgency = 85;
   }
 
   return {
-    translatedText,
-    detectedLanguage: detectedLang,
+    translatedText: `Citizen reports infrastructure issue in ${district}, ${state}: "${transcript}"`,
+    detectedLanguage: lower.includes('রানাঘাট') || lower.includes('পশ্চিমবঙ্গ') ? 'Bengali' : 'English',
     category,
     severity,
     urgencyScore: urgency,
     extractedLocation: {
-      state: 'Uttar Pradesh',
-      district: 'Bahraich',
-      villageOrWard: 'Nanpara Ward 4'
+      state,
+      district,
+      villageOrWard: area || district
     },
-    sentimentIntensity: urgency > 90 ? 'Emergency' : 'Distressed',
+    sentimentIntensity: 'Distressed',
     isSimulated: true
   };
 }
 
-// Dynamic WhatsApp Bot AI Responder
 export async function generateWhatsAppBotReply(
   userText: string,
   history: { sender: 'user' | 'bot'; text: string }[]
@@ -304,102 +300,122 @@ export async function generateWhatsAppBotReply(
   severity: SeverityLevel;
   urgencyScore: number;
 }> {
-  const client = getGeminiClient();
-
-  if (client && userText.trim().length > 2) {
-    try {
-      const prompt = `
-You are the official JanSetu AI GovBot (जन-सेतु नागरिक सेवा सहायक), an empathetic, smart, and responsive government assistant on WhatsApp in India.
+  const prompt = `
+You are the official JanSetu AI GovBot (जन-सेतु नागरिक सेवा सहायक) on WhatsApp for Indian public works.
 Citizen's latest message: "${userText}"
-
-Context & History:
+Conversation history:
 ${history.slice(-4).map((h) => `${h.sender === 'user' ? 'Citizen' : 'GovBot'}: ${h.text}`).join('\n')}
 
 Instructions:
-1. Detect the exact language used by the citizen (Hindi, Bengali, Tamil, Telugu, Marathi, Kannada, Odia, Gujarati, Punjabi, Hinglish, or English).
-2. Write a tailored, empathetic, and dynamic conversational reply in that SAME language:
-   - Acknowledge their specific issue dynamically (e.g. mention the exact problem like road pothole, drinking water pipe, hospital roof, voltage issue, garbage).
+1. Detect the citizen's EXACT language (English, Bengali, Hindi, Tamil, Telugu, Marathi, etc.).
+2. Respond in that SAME language in a helpful, conversational WhatsApp tone:
+   - Mention the specific issue and location they brought up (e.g. Ranaghat, West Bengal / Bahraich / Patna).
    - Reassure them that it is logged into the national DPI demand hotspot map.
-   - Mention the relevant government scheme / ministry in their language.
-   - Keep the reply concise, warm, structured with emojis, in authentic WhatsApp style.
-3. Classify the problem into category, location (state/district if mentioned or inferred), severity, and urgency score (0-100).
+   - Mention the relevant department/scheme (e.g., Jal Jeevan Mission, PMGSY roads, PWD).
+   - Keep it concise with helpful emojis.
+3. Extract category, state, district, severity, urgencyScore.
 
-Output strict valid JSON ONLY with this structure:
+Output strict valid JSON ONLY:
 {
   "replyText": "Your dynamic response text in the citizen's language",
   "category": "One of: Piped Water / Jal Jeevan Mission, Rural & State Roads / PMGSY, Primary Healthcare / Ayushman Bharat, School Infrastructure / Samagra Shiksha, Power & Solar / PM Surya Ghar, Sanitation & Solid Waste / Swachh Bharat, Flood & Drainage Resilience",
-  "district": "Extracted district name or Bahraich",
-  "state": "Extracted state name or Uttar Pradesh",
+  "district": "Detected district (e.g. Nadia / Ranaghat / Bahraich)",
+  "state": "Detected state (e.g. West Bengal / Uttar Pradesh / Bihar)",
   "severity": "One of: Low, Medium, High, Critical",
   "urgencyScore": 92
 }
-Do NOT include markdown backticks, return raw JSON only.`;
+Do NOT include markdown backticks.`;
 
-      const response = await client.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: prompt
-      });
-
-      const cleanJson = (response.text || '').replace(/```json/gi, '').replace(/```/g, '').trim();
+  const apiResponse = await callGeminiRest(prompt);
+  if (apiResponse) {
+    try {
+      const cleanJson = apiResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
       const parsed = JSON.parse(cleanJson);
-
       return {
-        replyText: parsed.replyText || 'आपकी समस्या दर्ज कर ली गई है।',
-        category: (parsed.category as IssueCategory) || 'Piped Water / Jal Jeevan Mission',
-        district: parsed.district || 'Bahraich',
-        state: parsed.state || 'Uttar Pradesh',
+        replyText: parsed.replyText || 'Your grievance has been logged successfully.',
+        category: (parsed.category as IssueCategory) || 'Rural & State Roads / PMGSY',
+        district: parsed.district || 'Nadia (Ranaghat)',
+        state: parsed.state || 'West Bengal',
         severity: (parsed.severity as SeverityLevel) || 'High',
-        urgencyScore: typeof parsed.urgencyScore === 'number' ? parsed.urgencyScore : 88
+        urgencyScore: parsed.urgencyScore || 88
       };
-    } catch (err) {
-      console.warn('Gemini WhatsApp bot fallback:', err);
+    } catch (e) {
+      console.warn('Failed parsing Gemini WhatsApp reply', e);
     }
   }
 
-  // Smart conversational fallback when offline
-  await new Promise((r) => setTimeout(r, 1000));
+  // Dynamic intelligent local fallback
+  await new Promise((r) => setTimeout(r, 700));
   const lower = userText.toLowerCase();
 
-  let replyText = `🙏 आपकी समस्या को JanSetu AI द्वारा दर्ज कर लिया गया है।\n\n📌 समस्या: "${userText}"\n⚡ हमने इसे संबंधित जिला प्रशासन और NITI Aayog डैशबोर्ड पर प्रेषित कर दिया है।\n\nजल्द ही निरीक्षण दल द्वारा स्थल जांच की जाएगी।`;
+  // Location
+  let state = 'Uttar Pradesh';
+  let district = 'Bahraich';
+  let locationLabel = 'Bahraich, UP';
+
+  if (lower.includes('west bengal') || lower.includes('bengal') || lower.includes('পশ্চিমবঙ্গ') || lower.includes('বাংলা') || lower.includes('ranaghat') || lower.includes('রানাঘাট') || lower.includes('nadia') || lower.includes('kolkata')) {
+    state = 'West Bengal';
+    district = lower.includes('ranaghat') || lower.includes('রানাঘাট') ? 'Nadia (Ranaghat)' : 'Kolkata';
+    locationLabel = 'Ranaghat, Nadia, West Bengal';
+  } else if (lower.includes('bihar') || lower.includes('patna')) {
+    state = 'Bihar';
+    district = 'Bhojpur';
+    locationLabel = 'Bihar';
+  } else if (lower.includes('odisha') || lower.includes('nabarangpur')) {
+    state = 'Odisha';
+    district = 'Nabarangpur';
+    locationLabel = 'Nabarangpur, Odisha';
+  } else if (lower.includes('tamil') || lower.includes('chennai')) {
+    state = 'Tamil Nadu';
+    district = 'Ramanathapuram';
+    locationLabel = 'Tamil Nadu';
+  }
+
+  // Category
   let category: IssueCategory = 'Rural & State Roads / PMGSY';
   let severity: SeverityLevel = 'High';
   let urgency = 88;
-  let dist = 'Bahraich';
-  let st = 'Uttar Pradesh';
 
-  if (lower.includes('water') || lower.includes('पानी') || lower.includes('जल') || lower.includes('pipe') || lower.includes('नल')) {
+  if (lower.includes('water') || lower.includes('pipe') || lower.includes('पानी') || lower.includes('जल') || lower.includes('জল')) {
     category = 'Piped Water / Jal Jeevan Mission';
     severity = 'Critical';
-    urgency = 95;
-    replyText = `💧 नमस्ते! आपकी पेयजल समस्या को अति-गंभीर (Critical) श्रेणी में दर्ज किया गया है।\n\n📍 जल जीवन मिशन टीम को तुरंत सूचित किया गया है और आपातकालीन टैंकर एवं पाइपलाइन मरम्मत हेतु DPR ड्राफ्ट की जा रही है।\n\nकृपया दूषित जल का सेवन न करें।`;
-  } else if (lower.includes('road') || lower.includes('सड़क') || lower.includes('पुल') || lower.includes('bridge') || lower.includes('रास्ता')) {
-    category = 'Rural & State Roads / PMGSY';
-    severity = 'High';
-    urgency = 90;
-    st = 'Odisha';
-    dist = 'Nabarangpur';
-    replyText = `🛣️ नमस्ते! संपर्क मार्ग / पुल की क्षति संबंधी आपकी शिकायत को PMGSY एवं Gati Shakti नेशनल मास्टर प्लान कॉरिडोर में जोड़ दिया गया है।\n\nइंजीनियरिंग टीम को साइट इंस्पेक्शन का निर्देश जारी किया गया है।`;
-  } else if (lower.includes('hospital') || lower.includes('अस्पताल') || lower.includes('doctor') || lower.includes('डॉक्टर') || lower.includes('दवा') || lower.includes('மருத்துவமனை')) {
+    urgency = 94;
+  } else if (lower.includes('hospital') || lower.includes('health') || lower.includes('doctor') || lower.includes('হাসপাতাল')) {
     category = 'Primary Healthcare / Ayushman Bharat';
     severity = 'Critical';
-    urgency = 94;
-    st = 'Jharkhand';
-    dist = 'Dumka';
-    replyText = `🏥 आपकी स्वास्थ्य केंद्र संबंधी शिकायत को प्राथमिकता पर लिया गया है।\n\nआयुष्मान भारत योजना के तहत ब्लॉक मेडिकल ऑफिसर और जिला कलेक्टर को आपातकालीन चिकित्सा व्यवस्था हेतु अलर्ट भेजा गया है।`;
-  } else if (lower.includes('school') || lower.includes('स्कूल') || lower.includes('शौचालय') || lower.includes('toilet') || lower.includes('बच्चे')) {
+    urgency = 92;
+  } else if (lower.includes('school') || lower.includes('toilet') || lower.includes('বিদ্যালয়')) {
     category = 'School Infrastructure / Samagra Shiksha';
     severity = 'High';
     urgency = 86;
-    st = 'Bihar';
-    dist = 'Bhojpur';
-    replyText = `🏫 विद्यालय अधोसंरचना व स्वच्छता संबंधी समस्या को समग्र शिक्षा अभियान के तहत दर्ज कर लिया गया है। ब्लॉक शिक्षा अधिकारी (BEO) को शीघ्र नवीनीकरण का प्रस्ताव भेजा गया है।`;
+  }
+
+  // Language & Reply Construction
+  let replyText = '';
+  const isBengali = /[\u0980-\u09FF]/.test(userText) || lower.includes('bengal') || lower.includes('ranaghat');
+  const isHindi = /[\u0900-\u097F]/.test(userText);
+  const isTamil = /[\u0B80-\u0BFF]/.test(userText);
+
+  if (isBengali && !isHindi) {
+    if (/[\u0980-\u09FF]/.test(userText)) {
+      replyText = `🙏 নমস্কার! JanSetu AI সিটিজেন সেবায় আপনার অভিযোগটি নথিভুক্ত করা হয়েছে।\n\n📌 অবস্থান: ${locationLabel}\n⚡ বিভাগ: ${category}\n\nআপনার এলাকা ${locationLabel}-এর সমস্যাটিকে জাতীয় হটস্পট ম্যাপে যুক্ত করে জেলা প্রশাসনের কাছে দ্রুত ব্যবস্থা গ্রহণের জন্য পাঠানো হয়েছে।`;
+    } else {
+      replyText = `🙏 Hello! Your development request regarding ${locationLabel} has been successfully recorded in JanSetu AI.\n\n📌 Sector: ${category}\n📍 Location: ${locationLabel}\n⚡ Severity: ${severity} (Priority Score: ${urgency}/100)\n\nWe have clustered your issue into the National DPI Hotspot Map and forwarded it to the relevant District Magistrate & PWD authorities for fast-track inspection.`;
+    }
+  } else if (isHindi) {
+    replyText = `🙏 नमस्ते! JanSetu AI नागरिक सेवा में आपकी शिकायत दर्ज कर ली गई है।\n\n📌 क्षेत्र: ${locationLabel}\n⚡ श्रेणी: ${category}\nगंभीरता: ${severity}\n\nआपकी मांग को राष्ट्रीय हॉटस्पॉट मैप में जोड़ दिया गया है और NITI Aayog / संबंधित विभाग को DPR निर्माण हेतु प्रेषित कर दिया गया है।`;
+  } else if (isTamil) {
+    replyText = `🙏 வணக்கம்! JanSetu AI அமைப்பில் உங்கள் கோரிக்கை பதிவு செய்யப்பட்டுள்ளது.\n\n📌 இடம்: ${locationLabel}\n⚡ துறை: ${category}\n\nமாவட்ட நிர்வாகத்திற்கு உடனடி நடவடிக்கைக்காக அனுப்பப்பட்டுள்ளது.`;
+  } else {
+    // English default
+    replyText = `🙏 Hello! We have registered your grievance regarding the infrastructure issue in ${locationLabel}.\n\n📌 Sector: ${category}\n📍 Area: ${locationLabel}\n⚡ Status: AI-Verified (${severity} Priority)\n\nYour demand has been clustered into the National Geospatial Hotspot Map and forwarded for Autonomous DPR formulation under central schemes.`;
   }
 
   return {
     replyText,
     category,
-    district: dist,
-    state: st,
+    district,
+    state,
     severity,
     urgencyScore: urgency
   };
@@ -415,103 +431,68 @@ export async function generateAiDpr(
     beneficiariesEstimate: number;
   }
 ): Promise<DetailedProjectReport> {
-  const client = getGeminiClient();
+  const prompt = `
+You are the Lead Project Engineer AI for NITI Aayog and PM Gati Shakti.
+Generate an official Detailed Project Report (DPR) in JSON.
+State: ${projectContext.state}, District: ${projectContext.district}, Category: ${projectContext.category}, Location: ${projectContext.hotspotLocation}, Citizen Pings: ${projectContext.citizenPingsCount}, Beneficiaries: ${projectContext.beneficiariesEstimate}
 
-  if (client) {
-    try {
-      const prompt = `
-You are the Lead Project Engineer & Policy Economist AI for NITI Aayog and PM Gati Shakti National Master Plan.
-Generate an official Detailed Project Report (DPR) for a high-priority public infrastructure project in India.
-
-Parameters:
-- State: ${projectContext.state}
-- District: ${projectContext.district} (Aspirational District focus)
-- Category: ${projectContext.category}
-- Hotspot Location: ${projectContext.hotspotLocation}
-- Citizen Distress Records Aggregated: ${projectContext.citizenPingsCount}
-- Target Beneficiaries: ${projectContext.beneficiariesEstimate}
-
-Output strict valid JSON ONLY with this exact structure:
+Output strict valid JSON ONLY:
 {
-  "title": "Comprehensive Project Title conforming to Central Ministry guidelines",
+  "title": "Comprehensive Project Title",
   "estimatedBudgetINR_Cr": 12.5,
   "centralSharePercentage": 60,
   "stateSharePercentage": 40,
-  "executiveSummary": "2-3 paragraphs of rigorous rationale, demographic justification, and public health/economic ROI",
-  "civicEngineeringScope": [
-    "Specific engineering work 1 with dimensions / capacity",
-    "Specific engineering work 2 with technical standards (e.g. IRC, CPWD, IS codes)",
-    "Specific engineering work 3",
-    "Specific engineering work 4"
-  ],
-  "budgetBreakdown": [
-    { "item": "Civil & Structural Works", "costINR_Lakhs": 650 },
-    { "item": "Equipment, Pumps/Solar & Electro-mechanical", "costINR_Lakhs": 320 },
-    { "item": "IoT SCADA Telemetry & Quality Monitoring", "costINR_Lakhs": 90 },
-    { "item": "Project Management, Quality Audit & Contingency", "costINR_Lakhs": 140 }
-  ],
-  "demographicBenefits": [
-    "Quantified benefit 1 for vulnerable/SC/ST/BPL communities",
-    "Quantified benefit 2 on health / education / market access",
-    "Quantified benefit 3 on women time-poverty reduction"
-  ],
-  "gatiShaktiIntegration": "Specific alignment statement with PM Gati Shakti National Master Plan GIS corridor layers",
-  "executionMilestones": [
-    { "month": "Month 1-2", "target": "Tendering via GeM portal and contractor award" },
-    { "month": "Month 3-5", "target": "Phase 1 civil work and foundation" },
-    { "month": "Month 6-8", "target": "Phase 2 installation and telemetry integration" },
-    { "month": "Month 9", "target": "Commissioning, safety clearance & Gram Panchayat handover" }
-  ],
-  "aiPolicyRecommendation": "Policy verdict highlighting cost-effectiveness, social return on investment (SROI), and priority sanction advice"
+  "executiveSummary": "Detailed rationale",
+  "civicEngineeringScope": ["Scope item 1", "Scope item 2", "Scope item 3"],
+  "budgetBreakdown": [{"item": "Civil works", "costINR_Lakhs": 650}],
+  "demographicBenefits": ["Benefit 1", "Benefit 2"],
+  "gatiShaktiIntegration": "Gati Shakti alignment statement",
+  "executionMilestones": [{"month": "Month 1-2", "target": "Survey"}],
+  "aiPolicyRecommendation": "Recommendation"
 }
-Do NOT enclose in markdown backticks, just return raw JSON.`;
+Do NOT include markdown backticks.`;
 
-      const response = await client.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: prompt
-      });
-
-      const cleanJson = (response.text || '').replace(/```json/gi, '').replace(/```/g, '').trim();
+  const apiResponse = await callGeminiRest(prompt);
+  if (apiResponse) {
+    try {
+      const cleanJson = apiResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
       const parsed = JSON.parse(cleanJson);
-
       const dprNumber = `DPR-${Date.now().toString().slice(-4)}-${projectContext.state.slice(0, 2).toUpperCase()}`;
 
       return {
         id: `dpr-${Date.now()}`,
         dprNumber,
-        title: parsed.title || `${projectContext.district} Integrated Infrastructure Development Scheme`,
+        title: parsed.title || `${projectContext.hotspotLocation} Comprehensive Modernization Plan`,
         category: projectContext.category,
         state: projectContext.state,
         district: projectContext.district,
         hotspotLocation: projectContext.hotspotLocation,
         targetBeneficiaries: projectContext.beneficiariesEstimate,
-        estimatedBudgetINR_Cr: typeof parsed.estimatedBudgetINR_Cr === 'number' ? parsed.estimatedBudgetINR_Cr : 11.2,
+        estimatedBudgetINR_Cr: parsed.estimatedBudgetINR_Cr || 12.4,
         centralSharePercentage: parsed.centralSharePercentage || 60,
         stateSharePercentage: parsed.stateSharePercentage || 40,
         priorityRank: 1,
         status: 'Drafted',
         createdAt: new Date().toISOString().split('T')[0],
-        executiveSummary: parsed.executiveSummary || 'Autonomous synthesis of aggregated citizen voice grievances aligned with NITI Aayog Key Performance Indicators.',
+        executiveSummary: parsed.executiveSummary || 'Formulated autonomously by JanSetu AI through spatial aggregation of citizen grievances.',
         civicEngineeringScope: parsed.civicEngineeringScope || ['Civil reconstruction conforming to CPWD specifications'],
         budgetBreakdown: parsed.budgetBreakdown || [{ item: 'Core Infrastructure Execution', costINR_Lakhs: 850 }],
         demographicBenefits: parsed.demographicBenefits || ['Direct service to vulnerable populace'],
         gatiShaktiIntegration: parsed.gatiShaktiIntegration || 'Registered on PM Gati Shakti Master Plan Portal.',
         executionMilestones: parsed.executionMilestones || [
           { month: 'Month 1-2', target: 'Survey and Procurement' },
-          { month: 'Month 3-6', target: 'Core Construction' },
-          { month: 'Month 7-8', target: 'Commissioning & Inspection' }
+          { month: 'Month 3-6', target: 'Core Construction' }
         ],
         aiPolicyRecommendation: parsed.aiPolicyRecommendation || 'HIGH PRIORITY SANCTION RECOMMENDED.',
         associatedRequestCount: projectContext.citizenPingsCount
       };
-    } catch (err) {
-      console.warn('Gemini DPR generation fallback:', err);
+    } catch (e) {
+      console.warn('Failed parsing Gemini DPR response', e);
     }
   }
 
-  // High-fidelity fallback / mock
-  await new Promise((r) => setTimeout(r, 1600));
-
+  // Local fallback
+  await new Promise((r) => setTimeout(r, 1200));
   const randomBudget = (Math.random() * 8 + 6).toFixed(1);
   return {
     id: `dpr-${Date.now()}`,
@@ -528,32 +509,29 @@ Do NOT enclose in markdown backticks, just return raw JSON.`;
     priorityRank: 1,
     status: 'Drafted',
     createdAt: new Date().toISOString().split('T')[0],
-    executiveSummary: `Generated by JanSetu AI through spatial clustering of ${projectContext.citizenPingsCount} citizen distress telemetry submissions from ${projectContext.hotspotLocation}, ${projectContext.district}. The proposal addresses acute infrastructure bottlenecks impacting ${projectContext.beneficiariesEstimate.toLocaleString()} citizens, adhering strictly to NITI Aayog Aspirational District guidelines and PM Gati Shakti multimodality standards.`,
+    executiveSummary: `Generated by JanSetu AI through spatial clustering of ${projectContext.citizenPingsCount} citizen distress telemetry submissions from ${projectContext.hotspotLocation}, ${projectContext.district}, ${projectContext.state}. Adheres strictly to NITI Aayog Aspirational District guidelines and PM Gati Shakti multimodality standards.`,
     civicEngineeringScope: [
       `Complete reconstruction and stabilization adhering to IRC/CPWD engineering standards for ${projectContext.category}`,
       'Installation of solar hybrid microgrid power backup and energy-efficient LED civic illumination',
-      'Integration of real-time IoT sensors transmitting live operational health telemetry to state DPI portal',
-      'Universal accessibility ramps and gender-segregated inclusive community facilities'
+      'Integration of real-time IoT sensors transmitting live operational health telemetry to state DPI portal'
     ],
     budgetBreakdown: [
       { item: 'Core Civil & Structural Works', costINR_Lakhs: Math.round(parseFloat(randomBudget) * 55) },
-      { item: 'Electro-mechanical, Solar & Specialized Fittings', costINR_Lakhs: Math.round(parseFloat(randomBudget) * 25) },
-      { item: 'Smart IoT Telemetry & Quality SCADA Network', costINR_Lakhs: Math.round(parseFloat(randomBudget) * 8) },
-      { item: 'Safety Audit, Social Impact Monitoring & Contingency', costINR_Lakhs: Math.round(parseFloat(randomBudget) * 12) }
+      { item: 'Electro-mechanical & Specialized Fittings', costINR_Lakhs: Math.round(parseFloat(randomBudget) * 25) },
+      { item: 'Smart IoT Telemetry Network', costINR_Lakhs: Math.round(parseFloat(randomBudget) * 8) },
+      { item: 'Quality Audit & Contingency', costINR_Lakhs: Math.round(parseFloat(randomBudget) * 12) }
     ],
     demographicBenefits: [
-      `Ensures direct, dignified public utility access for over ${projectContext.beneficiariesEstimate.toLocaleString()} rural residents`,
-      'Estimated 78% reduction in morbidity/transit failure incidents within 90 days of commissioning',
-      'Saves rural families an estimated 2.4 daily hours previously lost to civic distress and water/road transit delays'
+      `Ensures direct, dignified public utility access for over ${projectContext.beneficiariesEstimate.toLocaleString()} residents`,
+      'Estimated 78% reduction in morbidity/transit failure incidents within 90 days of commissioning'
     ],
-    gatiShaktiIntegration: `Corridor node indexed under PM Gati Shakti National Master Plan GIS platform (District: ${projectContext.district}). Enables coordinated inter-departmental clearances without trenching duplications.`,
+    gatiShaktiIntegration: `Corridor node indexed under PM Gati Shakti National Master Plan GIS platform (District: ${projectContext.district}, ${projectContext.state}).`,
     executionMilestones: [
-      { month: 'Month 1-2', target: 'Administrative sanction, environmental clearance & GeM tender issuance' },
-      { month: 'Month 3-5', target: 'Primary civil structure execution and sub-base compaction' },
-      { month: 'Month 6-7', target: 'Secondary fitments, solar array and IoT telemetry sensor deployment' },
-      { month: 'Month 8', target: 'Third-party quality inspection, public safety sign-off & Gram Panchayat handover' }
+      { month: 'Month 1-2', target: 'Administrative sanction & GeM tender issuance' },
+      { month: 'Month 3-5', target: 'Primary civil structure execution' },
+      { month: 'Month 6-7', target: 'Secondary fitments and IoT sensor deployment' }
     ],
-    aiPolicyRecommendation: 'FAST-TRACK SANCTION: Exceptional Social Return on Investment (SROI: 3.8x). Recommended for immediate financial sanction under central scheme supplementary grant allocation.',
+    aiPolicyRecommendation: 'FAST-TRACK SANCTION: Exceptional Social Return on Investment (SROI: 3.8x). Recommended for immediate financial sanction.',
     associatedRequestCount: projectContext.citizenPingsCount
   };
 }
@@ -562,90 +540,50 @@ export async function askPolicyCopilot(
   history: { role: 'user' | 'assistant'; content: string }[],
   userQuestion: string
 ): Promise<string> {
-  const client = getGeminiClient();
+  const prompt = `
+You are "Shasan-Mitra", an AI Policy Advisor for NITI Aayog and PM Gati Shakti in JanSetu AI.
+Conversation:
+${history.map((h) => `${h.role}: ${h.content}`).join('\n')}
+User Question: "${userQuestion}"
 
-  if (client) {
-    try {
-      const systemInstruction = `
-You are "Shasan-Mitra", an elite AI Policy Advisor and Governance Strategist embedded inside India's Digital Public Infrastructure (JanSetu AI).
-You advise Central Ministries (Jal Shakti, MoRTH, Health, Education, MNRE), State Chief Ministers' War Rooms, and District Magistrates.
-You have instant access to real-time citizen demand telemetry, NITI Aayog Aspirational Districts composite indicators, and PM Gati Shakti National Master Plan logistics layers.
-Your tone is professional, authoritative, empathetic, concise, and structured.
-Always format your response with clear headings, bullet points, and specific data estimates (e.g. population served, budget in ₹ Crores, schemes involved).`;
+Provide a structured, authoritative policy briefing with clear headings, bullets, and estimates.`;
 
-      const contents = history.map((h) => ({
-        role: h.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: h.content }]
-      }));
-      contents.push({
-        role: 'user',
-        parts: [{ text: userQuestion }]
-      });
-
-      const response = await client.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents,
-        config: {
-          systemInstruction
-        }
-      });
-
-      if (response.text) {
-        return response.text;
-      }
-    } catch (err) {
-      console.warn('Policy copilot fallback:', err);
-    }
+  const apiResponse = await callGeminiRest(prompt);
+  if (apiResponse) {
+    return apiResponse;
   }
 
-  // Fallback simulation responses based on query
-  await new Promise((r) => setTimeout(r, 1200));
+  // Fallback
+  await new Promise((r) => setTimeout(r, 900));
   const q = userQuestion.toLowerCase();
 
-  if (q.includes('bahraich') || q.includes('water') || q.includes('जल') || q.includes('drinking')) {
-    return `### 🏛️ Policy Briefing: Bahraich District (Uttar Pradesh) — Water Infrastructure Emergency
+  if (q.includes('ranaghat') || q.includes('bengal') || q.includes('nadia')) {
+    return `### 🏛️ Policy Briefing: Nadia District (West Bengal) — Ranaghat Infrastructure Corridor
 
 **1. Situation Analysis:**
-* **Active Citizen Grievances:** 384 verified pings across Nanpara, Mihinpurwa, and Jarwal blocks.
-* **Groundwater Assessment:** CGWB testing indicates severe bacterial contamination and rising arsenic levels in shallow aquifers (depth < 40m).
-* **Vulnerability Index:** 62.4% BPL population; 38.1% SC/ST concentration.
+* **Active Citizen Grievances:** 412 verified distress records across Ranaghat I & II blocks.
+* **Corridor Assessment:** Arterial culvert connecting rural agrarian clusters to NH-12 severely degraded, with drinking water supply lines compromised.
+* **Vulnerability Index:** 52.4% BPL population; high dependency on perishable vegetable logistics to Kolkata.
 
 **2. Gati Shakti & Scheme Alignment:**
-* Aligned with **Jal Jeevan Mission (Rural)** supplementary allocation.
-* Identified in PM Gati Shakti Master Plan Layer 14 as high-priority rural saturation zone.
+* Aligned with **PMGSY Tier-3** and **West Bengal State Rural Connectivity Mission**.
+* Registered on PM Gati Shakti Master Plan Layer 14 (East Coast Logistics & Arterial Flow).
 
-**3. Actionable AI Recommendations for Ministry of Jal Shakti:**
-1. **Immediate Intervention (0 - 48 Hours):** Deploy 12 mobile water purification tankers to Nanpara hospital and school clusters.
-2. **Capital Sanction (DPR-JJM-2026-UP-088):** Sanction ₹14.80 Crore for the 65 km HDPE networked distribution scheme with solar nanofiltration kiosks.
-3. **Budget Reallocation:** Draw from ₹28.4 Cr uncommitted Central Grant-in-Aid state pool for Uttar Pradesh.`;
-  }
-
-  if (q.includes('budget') || q.includes('fund') || q.includes('allocation') || q.includes('रुपये')) {
-    return `### 💰 National Infrastructure Reallocation Simulation (FY 2026-27)
-
-**1. Demand Hotspot vs. Budget Allocation Analysis:**
-* **Identified Gap:** ₹982.5 Crore deficit across 44 Aspirational Districts where citizen demand intensity is 3.4x higher than standard administrative benchmarks.
-* **Top 3 Deficit Sectors:**
-  1. *Jal Jeevan Mission (Water Security):* ₹385 Cr deficit in UP & Bihar flood/arsenic plains.
-  2. *PMGSY Tier-3 (Last-Mile Tribal Connectivity):* ₹310 Cr deficit in Odisha, Jharkhand & Chhattisgarh.
-  3. *Ayushman Arogya Mandirs (Primary Health Upgrades):* ₹165 Cr deficit.
-
-**2. Optimal Reallocation Strategy:**
-* By re-routing 4.8% of unspent urban smart-city contingency reserves to top-ranked JanSetu AI DPRs, state governments can immediately saturate **18,500 tribal & rural habitations**, directly benefiting **1.82 Crore vulnerable citizens**.`;
+**3. Actionable AI Recommendations for Ministry & District Magistrate:**
+1. **Immediate Action:** Sanction ₹12.60 Crore under **DPR-PMGSY-2026-WB-092** for 4-lane RCC culvert replacement and ductile water pipe relaying.
+2. **Economic Return:** Protects daily livelihood transit for 48,000 citizens and eliminates monsoon flood cutoffs.`;
   }
 
   return `### 🇮🇳 Strategic Governance Directive — JanSetu AI Decision Engine
 
 **Executive Summary for Policymakers:**
-Based on continuous synthesis of **284,190+ citizen requests** cross-referenced with **NITI Aayog Aspirational District Indicators** and **PM Gati Shakti Master Plan GIS coordinates**:
+Based on continuous synthesis of **284,190+ citizen requests** across 28 Indian States & 8 Union Territories:
 
-1. **Surfaced Demand Clusters:**
-   * **East Central Belt (Jharkhand, Bihar, Eastern UP):** 41% of all critical distress pings relate to drinking water purity and rural culvert washouts.
-   * **Western Coastal & Urban Informal Sectors:** High concentration of drainage and solid waste bottlenecks during seasonal monsoons.
+1. **Surfaced Demand Hotspots:**
+   * **Eastern Plains (West Bengal, Bihar, Jharkhand, Eastern UP):** 44% of distress pings center on culvert washouts and potable pipeline contamination.
+   * **Western & Peninsular Corridors:** Power microgrid deficits in coastal belt and municipal stormwater drainage bottlenecks.
 
 2. **Digital Public Good Impact:**
-   * Automated AI DPR generation has compressed project gestation from **9 months to under 48 hours**.
-   * Citizen trust rating has improved by **38.4%** through real-time DPI token tracking ("Jan-Praman").
-
-*Would you like me to draft an official Cabinet Note, simulate an inter-state budget transfer, or generate a detailed engineering bill of quantities for a specific district?*`;
+   * Compressed project gestation from **9 months to under 48 hours**.
+   * Transparent citizen audit trail active via "Jan-Praman" tokens.`;
 }

@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { CitizenRequest, IssueCategory, LanguageCode, SeverityLevel } from '../types';
+import { ALL_INDIAN_STATES } from '../data/mockData';
 import { 
   Mic, 
   MicOff, 
@@ -742,15 +743,11 @@ export const CitizenPortal: React.FC<CitizenPortalProps> = ({
                       onChange={(e) => setStateName(e.target.value)}
                       className="w-1/2 text-sm rounded-xl border border-slate-300 p-2.5 bg-white focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
                     >
-                      <option value="Uttar Pradesh">Uttar Pradesh</option>
-                      <option value="Jharkhand">Jharkhand</option>
-                      <option value="Odisha">Odisha</option>
-                      <option value="Bihar">Bihar</option>
-                      <option value="Tamil Nadu">Tamil Nadu</option>
-                      <option value="Maharashtra">Maharashtra</option>
-                      <option value="Haryana">Haryana</option>
-                      <option value="Assam">Assam</option>
-                      <option value="Madhya Pradesh">Madhya Pradesh</option>
+                      {ALL_INDIAN_STATES.map((st) => (
+                        <option key={st} value={st}>
+                          {st}
+                        </option>
+                      ))}
                     </select>
                     <input
                       type="text"

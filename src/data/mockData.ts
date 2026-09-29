@@ -13,7 +13,81 @@ export const SUPPORTED_LANGUAGES: LanguageOption[] = [
   { code: 'or', name: 'Odia', nativeName: 'ଓଡ଼ିଆ' }
 ];
 
+export const ALL_INDIAN_STATES = [
+  'Andhra Pradesh',
+  'Arunachal Pradesh',
+  'Assam',
+  'Bihar',
+  'Chhattisgarh',
+  'Goa',
+  'Gujarat',
+  'Haryana',
+  'Himachal Pradesh',
+  'Jharkhand',
+  'Karnataka',
+  'Kerala',
+  'Madhya Pradesh',
+  'Maharashtra',
+  'Manipur',
+  'Meghalaya',
+  'Mizoram',
+  'Nagaland',
+  'Odisha',
+  'Punjab',
+  'Rajasthan',
+  'Sikkim',
+  'Tamil Nadu',
+  'Telangana',
+  'Tripura',
+  'Uttar Pradesh',
+  'Uttarakhand',
+  'West Bengal',
+  'Delhi (NCT)',
+  'Jammu and Kashmir',
+  'Ladakh',
+  'Puducherry',
+  'Chandigarh',
+  'Andaman and Nicobar Islands'
+];
+
 export const INITIAL_REQUESTS: CitizenRequest[] = [
+  {
+    id: 'req-wb-001',
+    trackingNumber: 'JS-WB-2026-9142',
+    title: 'Severe waterlogging and cracked arterial culvert in Ranaghat, Nadia',
+    description: 'রানাঘাট ১ নং ব্লকের প্রধান সংযোগকারী কালভার্ট ব্রিজ ক্ষতিগ্রস্ত হয়েছে এবং পাইপলাইন ফেটে জল সরবরাহ বন্ধ। অবিলম্বে পুনর্নির্মাণ প্রয়োজন।',
+    originalLanguage: 'bn',
+    translatedDescription: 'Main connecting culvert bridge in Ranaghat Block 1 damaged with broken water pipeline disrupting clean potable supply to 16,000 residents. Immediate reconstruction and pipeline restoration required.',
+    category: 'Rural & State Roads / PMGSY',
+    state: 'West Bengal',
+    district: 'Nadia (Ranaghat)',
+    blockOrWard: 'Ranaghat I Block',
+    pinCode: '741201',
+    coordinates: [23.1800, 88.5800],
+    status: 'Hotspot_Clustered',
+    severity: 'Critical',
+    urgencyScore: 95,
+    inputChannel: 'whatsapp',
+    citizenName: 'Sourav Ganguly',
+    citizenPhoneMasked: '+91 98****2104',
+    timestamp: 'Just now',
+    upvotes: 412,
+    demographicImpact: {
+      populationCovered: 18500,
+      aspirationalDistrict: true,
+      bplPercentage: 52.4,
+      scStPercentage: 34.1,
+      gatiShaktiAlignmentScore: 91
+    },
+    aiVerification: {
+      verified: true,
+      confidence: 0.98,
+      detectedDefect: 'Severe sub-base culvert scour and potable distribution line rupture',
+      hazardIndex: 9.3,
+      recommendedMinistry: 'Ministry of Rural Development / PMGSY Tier-3',
+      notes: 'High-density arterial connector between Ranaghat sub-division and NH-12.'
+    }
+  },
   {
     id: 'req-001',
     trackingNumber: 'JS-UP-2026-8821',
@@ -199,50 +273,43 @@ export const INITIAL_REQUESTS: CitizenRequest[] = [
       recommendedMinistry: 'Ministry of New and Renewable Energy / PM Surya Ghar',
       notes: 'High economic livelihood impact on small-scale fishing cooperatives.'
     }
-  },
-  {
-    id: 'req-006',
-    trackingNumber: 'JS-MH-2026-5520',
-    title: 'Hazardous garbage dumping and open toxic runoff in Kurla East, Mumbai',
-    description: 'कुर्ला पूर्व मधील सांडपाणी नाला पूर्णपणे प्लास्टिक आणि कचऱ्याने तुंबला आहे. पावसाळ्यात संपूर्ण वस्तीत घाण पाणी शिरते. डेंग्यू आणि मलेरियाचा प्रादुर्भाव वाढला आहे.',
-    originalLanguage: 'mr',
-    translatedDescription: 'Drainage nallah in Kurla East completely clogged with solid plastic waste and industrial runoff. Backflow into informal settlements during rains causing surge in dengue & malaria cases.',
-    category: 'Sanitation & Solid Waste / Swachh Bharat',
-    state: 'Maharashtra',
-    district: 'Mumbai Suburban',
-    blockOrWard: 'Kurla Ward L',
-    pinCode: '400024',
-    coordinates: [19.0657, 72.8797],
-    status: 'Work_In_Progress',
-    severity: 'High',
-    urgencyScore: 84,
-    inputChannel: 'photo',
-    imageUrl: 'https://images.unsplash.com/photo-1618477388954-7852f32655ec?auto=format&fit=crop&w=600&q=80',
-    citizenName: 'Anil Jadhav',
-    citizenPhoneMasked: '+91 91****6621',
-    timestamp: '2026-09-24 10:00 AM',
-    upvotes: 389,
-    demographicImpact: {
-      populationCovered: 45000,
-      aspirationalDistrict: false,
-      bplPercentage: 35.0,
-      scStPercentage: 15.0,
-      gatiShaktiAlignmentScore: 76
-    },
-    aiVerification: {
-      verified: true,
-      confidence: 0.95,
-      detectedDefect: 'Severe municipal channel blockage, high biological oxygen demand, monsoon flood vulnerability',
-      hazardIndex: 8.3,
-      recommendedMinistry: 'Ministry of Housing and Urban Affairs / Swachh Bharat Urban 2.0',
-      notes: 'Urban drainage hotspot. Automated suction desilting deployed.'
-    }
   }
 ];
 
+// Comprehensive 28 States & UTs representation for National Hotspot Map
 export const DISTRICT_METRICS: DistrictMetric[] = [
   {
-    id: 'dist-01',
+    id: 'dist-wb-01',
+    name: 'Nadia (Ranaghat)',
+    state: 'West Bengal',
+    coordinates: [23.1800, 88.5800],
+    isAspirational: true,
+    compositeDeficitScore: 88,
+    totalRequests: 1240,
+    criticalPending: 42,
+    topSector: 'Rural & State Roads / PMGSY',
+    population: 5168000,
+    fundsAllocatedINR_Cr: 98.0,
+    fundsRequiredINR_Cr: 210.0,
+    gatiShaktiGapScore: 86
+  },
+  {
+    id: 'dist-wb-02',
+    name: 'Birbhum',
+    state: 'West Bengal',
+    coordinates: [23.8400, 87.6100],
+    isAspirational: true,
+    compositeDeficitScore: 84,
+    totalRequests: 890,
+    criticalPending: 28,
+    topSector: 'Piped Water / Jal Jeevan Mission',
+    population: 3502000,
+    fundsAllocatedINR_Cr: 74.0,
+    fundsRequiredINR_Cr: 165.0,
+    gatiShaktiGapScore: 82
+  },
+  {
+    id: 'dist-up-01',
     name: 'Bahraich',
     state: 'Uttar Pradesh',
     coordinates: [27.5750, 81.5950],
@@ -257,7 +324,7 @@ export const DISTRICT_METRICS: DistrictMetric[] = [
     gatiShaktiGapScore: 88
   },
   {
-    id: 'dist-02',
+    id: 'dist-jh-01',
     name: 'Dumka',
     state: 'Jharkhand',
     coordinates: [24.2667, 87.2500],
@@ -272,7 +339,7 @@ export const DISTRICT_METRICS: DistrictMetric[] = [
     gatiShaktiGapScore: 84
   },
   {
-    id: 'dist-03',
+    id: 'dist-od-01',
     name: 'Nabarangpur',
     state: 'Odisha',
     coordinates: [19.2333, 82.5500],
@@ -287,7 +354,7 @@ export const DISTRICT_METRICS: DistrictMetric[] = [
     gatiShaktiGapScore: 91
   },
   {
-    id: 'dist-04',
+    id: 'dist-hr-01',
     name: 'Nuh',
     state: 'Haryana',
     coordinates: [28.1167, 77.0167],
@@ -302,7 +369,7 @@ export const DISTRICT_METRICS: DistrictMetric[] = [
     gatiShaktiGapScore: 80
   },
   {
-    id: 'dist-05',
+    id: 'dist-mh-01',
     name: 'Gadchiroli',
     state: 'Maharashtra',
     coordinates: [20.1833, 80.0000],
@@ -317,7 +384,7 @@ export const DISTRICT_METRICS: DistrictMetric[] = [
     gatiShaktiGapScore: 87
   },
   {
-    id: 'dist-06',
+    id: 'dist-br-01',
     name: 'Bhojpur',
     state: 'Bihar',
     coordinates: [25.5564, 84.6603],
@@ -332,7 +399,7 @@ export const DISTRICT_METRICS: DistrictMetric[] = [
     gatiShaktiGapScore: 72
   },
   {
-    id: 'dist-07',
+    id: 'dist-tn-01',
     name: 'Ramanathapuram',
     state: 'Tamil Nadu',
     coordinates: [9.3667, 78.8333],
@@ -347,7 +414,7 @@ export const DISTRICT_METRICS: DistrictMetric[] = [
     gatiShaktiGapScore: 78
   },
   {
-    id: 'dist-08',
+    id: 'dist-jk-01',
     name: 'Baramulla',
     state: 'Jammu and Kashmir',
     coordinates: [34.2000, 74.3400],
@@ -360,10 +427,427 @@ export const DISTRICT_METRICS: DistrictMetric[] = [
     fundsAllocatedINR_Cr: 58.0,
     fundsRequiredINR_Cr: 130.0,
     gatiShaktiGapScore: 83
+  },
+  {
+    id: 'dist-as-01',
+    name: 'Dhubri',
+    state: 'Assam',
+    coordinates: [26.0200, 89.9800],
+    isAspirational: true,
+    compositeDeficitScore: 87,
+    totalRequests: 920,
+    criticalPending: 36,
+    topSector: 'Flood & Drainage Resilience',
+    population: 1949000,
+    fundsAllocatedINR_Cr: 72.0,
+    fundsRequiredINR_Cr: 185.0,
+    gatiShaktiGapScore: 89
+  },
+  {
+    id: 'dist-cg-01',
+    name: 'Bastar',
+    state: 'Chhattisgarh',
+    coordinates: [19.0700, 82.0300],
+    isAspirational: true,
+    compositeDeficitScore: 86,
+    totalRequests: 680,
+    criticalPending: 25,
+    topSector: 'Primary Healthcare / Ayushman Bharat',
+    population: 1413000,
+    fundsAllocatedINR_Cr: 68.0,
+    fundsRequiredINR_Cr: 160.0,
+    gatiShaktiGapScore: 88
+  },
+  {
+    id: 'dist-mp-01',
+    name: 'Barwani',
+    state: 'Madhya Pradesh',
+    coordinates: [22.0300, 74.9000],
+    isAspirational: true,
+    compositeDeficitScore: 83,
+    totalRequests: 710,
+    criticalPending: 24,
+    topSector: 'Piped Water / Jal Jeevan Mission',
+    population: 1385000,
+    fundsAllocatedINR_Cr: 60.0,
+    fundsRequiredINR_Cr: 140.0,
+    gatiShaktiGapScore: 81
+  },
+  {
+    id: 'dist-rj-01',
+    name: 'Jaisalmer',
+    state: 'Rajasthan',
+    coordinates: [26.9157, 70.9083],
+    isAspirational: true,
+    compositeDeficitScore: 79,
+    totalRequests: 510,
+    criticalPending: 15,
+    topSector: 'Piped Water / Jal Jeevan Mission',
+    population: 669000,
+    fundsAllocatedINR_Cr: 55.0,
+    fundsRequiredINR_Cr: 125.0,
+    gatiShaktiGapScore: 79
+  },
+  {
+    id: 'dist-gj-01',
+    name: 'Dahod',
+    state: 'Gujarat',
+    coordinates: [22.8300, 74.2500],
+    isAspirational: true,
+    compositeDeficitScore: 78,
+    totalRequests: 640,
+    criticalPending: 18,
+    topSector: 'School Infrastructure / Samagra Shiksha',
+    population: 2127000,
+    fundsAllocatedINR_Cr: 70.0,
+    fundsRequiredINR_Cr: 145.0,
+    gatiShaktiGapScore: 77
+  },
+  {
+    id: 'dist-ka-01',
+    name: 'Raichur',
+    state: 'Karnataka',
+    coordinates: [16.2000, 77.3500],
+    isAspirational: true,
+    compositeDeficitScore: 76,
+    totalRequests: 590,
+    criticalPending: 17,
+    topSector: 'Primary Healthcare / Ayushman Bharat',
+    population: 1928000,
+    fundsAllocatedINR_Cr: 66.0,
+    fundsRequiredINR_Cr: 135.0,
+    gatiShaktiGapScore: 75
+  },
+  {
+    id: 'dist-ap-01',
+    name: 'Vizianagaram',
+    state: 'Andhra Pradesh',
+    coordinates: [18.1100, 83.4100],
+    isAspirational: true,
+    compositeDeficitScore: 75,
+    totalRequests: 520,
+    criticalPending: 13,
+    topSector: 'Rural & State Roads / PMGSY',
+    population: 2344000,
+    fundsAllocatedINR_Cr: 64.0,
+    fundsRequiredINR_Cr: 130.0,
+    gatiShaktiGapScore: 76
+  },
+  {
+    id: 'dist-ts-01',
+    name: 'Bhadradri Kothagudem',
+    state: 'Telangana',
+    coordinates: [17.5500, 80.6100],
+    isAspirational: true,
+    compositeDeficitScore: 77,
+    totalRequests: 480,
+    criticalPending: 14,
+    topSector: 'Primary Healthcare / Ayushman Bharat',
+    population: 1069000,
+    fundsAllocatedINR_Cr: 52.0,
+    fundsRequiredINR_Cr: 115.0,
+    gatiShaktiGapScore: 80
+  },
+  {
+    id: 'dist-kl-01',
+    name: 'Wayanad',
+    state: 'Kerala',
+    coordinates: [11.6854, 76.1320],
+    isAspirational: true,
+    compositeDeficitScore: 72,
+    totalRequests: 430,
+    criticalPending: 11,
+    topSector: 'Flood & Drainage Resilience',
+    population: 817000,
+    fundsAllocatedINR_Cr: 60.0,
+    fundsRequiredINR_Cr: 110.0,
+    gatiShaktiGapScore: 82
+  },
+  {
+    id: 'dist-pb-01',
+    name: 'Firozpur',
+    state: 'Punjab',
+    coordinates: [30.9200, 74.6100],
+    isAspirational: true,
+    compositeDeficitScore: 70,
+    totalRequests: 390,
+    criticalPending: 9,
+    topSector: 'Piped Water / Jal Jeevan Mission',
+    population: 1001000,
+    fundsAllocatedINR_Cr: 48.0,
+    fundsRequiredINR_Cr: 95.0,
+    gatiShaktiGapScore: 74
+  },
+  {
+    id: 'dist-hp-01',
+    name: 'Chamba',
+    state: 'Himachal Pradesh',
+    coordinates: [32.5500, 76.1200],
+    isAspirational: true,
+    compositeDeficitScore: 73,
+    totalRequests: 360,
+    criticalPending: 10,
+    topSector: 'Rural & State Roads / PMGSY',
+    population: 519000,
+    fundsAllocatedINR_Cr: 45.0,
+    fundsRequiredINR_Cr: 98.0,
+    gatiShaktiGapScore: 81
+  },
+  {
+    id: 'dist-uk-01',
+    name: 'Haridwar',
+    state: 'Uttarakhand',
+    coordinates: [29.9457, 78.1642],
+    isAspirational: true,
+    compositeDeficitScore: 68,
+    totalRequests: 490,
+    criticalPending: 12,
+    topSector: 'Sanitation & Solid Waste / Swachh Bharat',
+    population: 1890000,
+    fundsAllocatedINR_Cr: 58.0,
+    fundsRequiredINR_Cr: 105.0,
+    gatiShaktiGapScore: 73
+  },
+  {
+    id: 'dist-tr-01',
+    name: 'Dhalai',
+    state: 'Tripura',
+    coordinates: [23.8500, 91.8500],
+    isAspirational: true,
+    compositeDeficitScore: 80,
+    totalRequests: 320,
+    criticalPending: 11,
+    topSector: 'Rural & State Roads / PMGSY',
+    population: 378000,
+    fundsAllocatedINR_Cr: 42.0,
+    fundsRequiredINR_Cr: 90.0,
+    gatiShaktiGapScore: 83
+  },
+  {
+    id: 'dist-me-01',
+    name: 'Ri-Bhoi',
+    state: 'Meghalaya',
+    coordinates: [25.9000, 91.8800],
+    isAspirational: true,
+    compositeDeficitScore: 79,
+    totalRequests: 290,
+    criticalPending: 8,
+    topSector: 'Primary Healthcare / Ayushman Bharat',
+    population: 258000,
+    fundsAllocatedINR_Cr: 38.0,
+    fundsRequiredINR_Cr: 82.0,
+    gatiShaktiGapScore: 80
+  },
+  {
+    id: 'dist-mn-01',
+    name: 'Chandel',
+    state: 'Manipur',
+    coordinates: [24.3200, 94.0000],
+    isAspirational: true,
+    compositeDeficitScore: 82,
+    totalRequests: 270,
+    criticalPending: 9,
+    topSector: 'Rural & State Roads / PMGSY',
+    population: 144000,
+    fundsAllocatedINR_Cr: 35.0,
+    fundsRequiredINR_Cr: 78.0,
+    gatiShaktiGapScore: 85
+  },
+  {
+    id: 'dist-nl-01',
+    name: 'Kiphire',
+    state: 'Nagaland',
+    coordinates: [25.8800, 94.7800],
+    isAspirational: true,
+    compositeDeficitScore: 83,
+    totalRequests: 240,
+    criticalPending: 8,
+    topSector: 'Rural & State Roads / PMGSY',
+    population: 74000,
+    fundsAllocatedINR_Cr: 32.0,
+    fundsRequiredINR_Cr: 75.0,
+    gatiShaktiGapScore: 86
+  },
+  {
+    id: 'dist-mz-01',
+    name: 'Mamit',
+    state: 'Mizoram',
+    coordinates: [23.9300, 92.4800],
+    isAspirational: true,
+    compositeDeficitScore: 76,
+    totalRequests: 210,
+    criticalPending: 6,
+    topSector: 'Power & Solar / PM Surya Ghar',
+    population: 86000,
+    fundsAllocatedINR_Cr: 28.0,
+    fundsRequiredINR_Cr: 65.0,
+    gatiShaktiGapScore: 78
+  },
+  {
+    id: 'dist-ar-01',
+    name: 'Namsai',
+    state: 'Arunachal Pradesh',
+    coordinates: [27.6700, 95.8700],
+    isAspirational: true,
+    compositeDeficitScore: 78,
+    totalRequests: 220,
+    criticalPending: 7,
+    topSector: 'Flood & Drainage Resilience',
+    population: 95000,
+    fundsAllocatedINR_Cr: 30.0,
+    fundsRequiredINR_Cr: 70.0,
+    gatiShaktiGapScore: 82
+  },
+  {
+    id: 'dist-sk-01',
+    name: 'West Sikkim',
+    state: 'Sikkim',
+    coordinates: [27.3000, 88.2500],
+    isAspirational: true,
+    compositeDeficitScore: 69,
+    totalRequests: 180,
+    criticalPending: 5,
+    topSector: 'Rural & State Roads / PMGSY',
+    population: 136000,
+    fundsAllocatedINR_Cr: 26.0,
+    fundsRequiredINR_Cr: 55.0,
+    gatiShaktiGapScore: 76
+  },
+  {
+    id: 'dist-dl-01',
+    name: 'North East Delhi',
+    state: 'Delhi (NCT)',
+    coordinates: [28.6900, 77.2700],
+    isAspirational: false,
+    compositeDeficitScore: 75,
+    totalRequests: 1380,
+    criticalPending: 38,
+    topSector: 'Sanitation & Solid Waste / Swachh Bharat',
+    population: 2241000,
+    fundsAllocatedINR_Cr: 110.0,
+    fundsRequiredINR_Cr: 195.0,
+    gatiShaktiGapScore: 74
+  },
+  {
+    id: 'dist-ld-01',
+    name: 'Kargil',
+    state: 'Ladakh',
+    coordinates: [34.5500, 76.1300],
+    isAspirational: true,
+    compositeDeficitScore: 81,
+    totalRequests: 250,
+    criticalPending: 8,
+    topSector: 'Power & Solar / PM Surya Ghar',
+    population: 140000,
+    fundsAllocatedINR_Cr: 36.0,
+    fundsRequiredINR_Cr: 80.0,
+    gatiShaktiGapScore: 84
+  },
+  {
+    id: 'dist-py-01',
+    name: 'Karaikal',
+    state: 'Puducherry',
+    coordinates: [10.9200, 79.8300],
+    isAspirational: false,
+    compositeDeficitScore: 65,
+    totalRequests: 190,
+    criticalPending: 4,
+    topSector: 'Sanitation & Solid Waste / Swachh Bharat',
+    population: 200000,
+    fundsAllocatedINR_Cr: 22.0,
+    fundsRequiredINR_Cr: 45.0,
+    gatiShaktiGapScore: 70
+  },
+  {
+    id: 'dist-an-01',
+    name: 'South Andaman',
+    state: 'Andaman and Nicobar Islands',
+    coordinates: [11.6600, 92.7400],
+    isAspirational: false,
+    compositeDeficitScore: 67,
+    totalRequests: 160,
+    criticalPending: 4,
+    topSector: 'Power & Solar / PM Surya Ghar',
+    population: 238000,
+    fundsAllocatedINR_Cr: 24.0,
+    fundsRequiredINR_Cr: 48.0,
+    gatiShaktiGapScore: 72
+  },
+  {
+    id: 'dist-ch-01',
+    name: 'Chandigarh',
+    state: 'Chandigarh',
+    coordinates: [30.7333, 76.7794],
+    isAspirational: false,
+    compositeDeficitScore: 48,
+    totalRequests: 320,
+    criticalPending: 5,
+    topSector: 'Sanitation & Solid Waste / Swachh Bharat',
+    population: 1055000,
+    fundsAllocatedINR_Cr: 40.0,
+    fundsRequiredINR_Cr: 60.0,
+    gatiShaktiGapScore: 68
+  },
+  {
+    id: 'dist-ga-01',
+    name: 'South Goa',
+    state: 'Goa',
+    coordinates: [15.2800, 74.0000],
+    isAspirational: false,
+    compositeDeficitScore: 54,
+    totalRequests: 210,
+    criticalPending: 4,
+    topSector: 'Flood & Drainage Resilience',
+    population: 640000,
+    fundsAllocatedINR_Cr: 32.0,
+    fundsRequiredINR_Cr: 55.0,
+    gatiShaktiGapScore: 65
   }
 ];
 
 export const INITIAL_DPRS: DetailedProjectReport[] = [
+  {
+    id: 'dpr-wb-001',
+    dprNumber: 'DPR-PMGSY-2026-WB-092',
+    title: 'Ranaghat Sub-Division Arterial RCC Culvert Replacement & Piped Water Grid Modernization',
+    category: 'Rural & State Roads / PMGSY',
+    state: 'West Bengal',
+    district: 'Nadia (Ranaghat)',
+    hotspotLocation: 'Ranaghat I and II Block Connecting Corridor',
+    targetBeneficiaries: 48000,
+    estimatedBudgetINR_Cr: 12.6,
+    centralSharePercentage: 60,
+    stateSharePercentage: 40,
+    priorityRank: 1,
+    status: 'Cabinet Sanctioned',
+    createdAt: '2026-09-29',
+    executiveSummary: 'Formulated autonomously by JanSetu AI through spatial aggregation of citizen grievances reporting chronic road subsidence and water pipeline ruptures in Ranaghat, Nadia. The proposal provides an upgraded 4-lane RCC culvert with integrated sub-surface utility conduits adhering to PM Gati Shakti GIS alignment.',
+    civicEngineeringScope: [
+      'Construction of high-grade M35 Reinforced Cement Concrete (RCC) 4-span culvert (42m)',
+      'Laying 18.4 km ductile iron (DI) K9 class potable water transmission line',
+      'Integration of automated flood sensor telemetry connected directly to West Bengal State Disaster Management Authority',
+      'Anti-erosion geo-textile riverbank revetment and solar illuminated safety barriers'
+    ],
+    budgetBreakdown: [
+      { item: 'RCC Bridge & Culvert Superstructure', costINR_Lakhs: 580 },
+      { item: 'Potable Pipeline Ductile Relaying', costINR_Lakhs: 340 },
+      { item: 'IoT SCADA Telemetry & River Gauging', costINR_Lakhs: 80 },
+      { item: 'Embankment Geo-mattressing & Contingency', costINR_Lakhs: 160 }
+    ],
+    demographicBenefits: [
+      'Restores 24x7 unhindered transit to 48,000 residents across 14 Gram Panchayats',
+      'Protects agricultural transit for local flower and vegetable mandis to Kolkata markets',
+      'Prevents monsoon inundation of low-lying suburban wards'
+    ],
+    gatiShaktiIntegration: 'PM Gati Shakti East Coast Corridor Layer 14 (District: Nadia). Enables unified right-of-way for road and Jal Jeevan utilities.',
+    executionMilestones: [
+      { month: 'Month 1-2', target: 'Geotechnical soil investigation & GeM tender award' },
+      { month: 'Month 3-5', target: 'Piling and substructure erection before monsoon surge' },
+      { month: 'Month 6-8', target: 'Deck slab casting and pipeline hydrotesting' }
+    ],
+    aiPolicyRecommendation: 'CRITICAL MULTIMODAL CORRIDOR: Fast-track sanction approved under PMGSY Tier-3 supplementary grant.',
+    associatedRequestCount: 412
+  },
   {
     id: 'dpr-001',
     dprNumber: 'DPR-JJM-2026-UP-088',
@@ -379,114 +863,28 @@ export const INITIAL_DPRS: DetailedProjectReport[] = [
     priorityRank: 1,
     status: 'Cabinet Sanctioned',
     createdAt: '2026-09-28',
-    executiveSummary: 'Formulated autonomously by JanSetu AI policy agent by synthesizing 384 citizen voice grievance records with CGWB groundwater salinity data and NITI Aayog Aspirational District parameters. The project replaces arsenic-tainted shallow handpumps with a 65 km HDPE networked distribution scheme powered by dedicated decentralized solar pumps.',
+    executiveSummary: 'Formulated autonomously by JanSetu AI policy agent by synthesizing 384 citizen voice grievance records with CGWB groundwater salinity data and NITI Aayog Aspirational District parameters.',
     civicEngineeringScope: [
       'Laying 64.8 km high-density polyethylene (HDPE) distribution mainlines',
       'Construction of two 450 kL elevated storage reservoirs (ESR) with telemetry SCADA sensors',
-      'Installation of 18 solar-powered multi-stage filtration kiosks with automated chlorine dosers',
-      'Direct FHTC (Functional Household Tap Connection) meters for 6,200 rural households'
+      'Installation of 18 solar-powered multi-stage filtration kiosks with automated chlorine dosers'
     ],
     budgetBreakdown: [
       { item: 'Civil Works & Piping Network', costINR_Lakhs: 720 },
       { item: 'Solar Power Sub-stations & Inverters', costINR_Lakhs: 290 },
       { item: 'Filtration Plants & Arsenic Remediation Units', costINR_Lakhs: 240 },
-      { item: 'IoT Flow & Water Purity Telemetry Nodes', costINR_Lakhs: 90 },
-      { item: 'Contingency & Community Jal Samiti Training', costINR_Lakhs: 140 }
+      { item: 'IoT Flow & Water Purity Telemetry Nodes', costINR_Lakhs: 90 }
     ],
     demographicBenefits: [
-      'Eliminates waterborne morbidity across 62% BPL and 38% SC/ST populace',
-      'Saves estimated 2.8 hours daily productive labor predominantly borne by rural women and girls',
-      'Real-time IoT water quality sensors report directly to Central Jal Jeevan Mission dashboard'
+      'Eliminates waterborne morbidity across 62% BPL and 38% SC/ST populace'
     ],
-    gatiShaktiIntegration: 'Corridor aligned with PM Gati Shakti National Master Plan Layer 14 (Rural Arterial Waterways & Power Rights of Way).',
+    gatiShaktiIntegration: 'Corridor aligned with PM Gati Shakti National Master Plan Layer 14.',
     executionMilestones: [
-      { month: 'Month 1-2', target: 'Detailed engineering survey & contractor tendering via GeM' },
-      { month: 'Month 3-5', target: 'Borewell drilling, ESR foundation, and solar array installation' },
-      { month: 'Month 6-8', target: 'Pipeline trenching, hydrotesting, and household meters' },
-      { month: 'Month 9-10', target: 'SCADA commissioning, water quality certification & handover to Gram Panchayat' }
+      { month: 'Month 1-2', target: 'Detailed engineering survey & contractor tendering' },
+      { month: 'Month 3-5', target: 'Borewell drilling and solar array installation' }
     ],
-    aiPolicyRecommendation: 'HIGH VALUE / IMMEDIATE SANCTION: Cost-to-impact ratio of ₹3,482 per citizen protected against arsenic poisoning. Reallocating unused CAPEX from central Jal Jeevan Mission uncommitted state reserves.',
+    aiPolicyRecommendation: 'HIGH VALUE / IMMEDIATE SANCTION: Cost-to-impact ratio of ₹3,482 per citizen protected against arsenic poisoning.',
     associatedRequestCount: 384
-  },
-  {
-    id: 'dpr-002',
-    dprNumber: 'DPR-PMGSY-2026-OD-041',
-    title: 'High-Level RCC Submersible Bridge & All-Weather Alluvial Road over Jharigaon Basin',
-    category: 'Rural & State Roads / PMGSY',
-    state: 'Odisha',
-    district: 'Nabarangpur',
-    hotspotLocation: 'Jharigaon to Chandahandi link corridor',
-    targetBeneficiaries: 31000,
-    estimatedBudgetINR_Cr: 9.4,
-    centralSharePercentage: 90,
-    stateSharePercentage: 10,
-    priorityRank: 2,
-    status: 'Tender Floating',
-    createdAt: '2026-09-27',
-    executiveSummary: 'Triggered by 418 citizen WhatsApp and IVR distress submissions reporting cutoff of 6 tribal villages during monsoon. Aligns with PM-JANMAN Special Tribal Vulnerability Initiative.',
-    civicEngineeringScope: [
-      'Construction of 120-meter 4-span Reinforced Cement Concrete (RCC) high-level bridge',
-      'Construction of 14.2 km bituminous all-weather road with reinforced retaining walls',
-      'Cross-drainage culverts (8 units) with anti-scour geo-textile mattressing'
-    ],
-    budgetBreakdown: [
-      { item: 'RCC Bridge Superstructure & Piling', costINR_Lakhs: 510 },
-      { item: 'Road Pavement & Embankment Works', costINR_Lakhs: 280 },
-      { item: 'Drainage Culverts & Riverbank Protection', costINR_Lakhs: 95 },
-      { item: 'Signage, Solar Streetlights & Safety Barriers', costINR_Lakhs: 55 }
-    ],
-    demographicBenefits: [
-      'Ensures 24x7 365-day emergency ambulance and 108 healthcare access to 81.5% ST populace',
-      'Enables tribal farmers to transport minor forest produce to district APMC mandi without middleman spoilage'
-    ],
-    gatiShaktiIntegration: 'PM Gati Shakti Rural Logistics Node ID: OD-NBR-7821. Cross-referenced with ISRO Bhuvan satellite flood inundation maps.',
-    executionMilestones: [
-      { month: 'Month 1-3', target: 'Piling and substructure completion before pre-monsoon flow' },
-      { month: 'Month 4-7', target: 'Girder casting, deck slab concreting and road base compaction' },
-      { month: 'Month 8', target: 'Black-topping, safety testing and formal inauguration' }
-    ],
-    aiPolicyRecommendation: 'CRITICAL ACCESS INFRASTRUCTURE: Solves chronic geographic isolation. Highest score under NITI Aayog tribal infrastructure equity index.',
-    associatedRequestCount: 418
-  },
-  {
-    id: 'dpr-003',
-    dprNumber: 'DPR-AYUSH-2026-JH-019',
-    title: 'Modern 24x7 Ayushman Arogya Mandir & Maternal Emergency Unit in Shikaripara',
-    category: 'Primary Healthcare / Ayushman Bharat',
-    state: 'Jharkhand',
-    district: 'Dumka',
-    hotspotLocation: 'Shikaripara Block Central Sub-Division',
-    targetBeneficiaries: 28000,
-    estimatedBudgetINR_Cr: 4.2,
-    centralSharePercentage: 60,
-    stateSharePercentage: 40,
-    priorityRank: 3,
-    status: 'Under Review',
-    createdAt: '2026-09-27',
-    executiveSummary: 'Direct response to citizen photo verification flagging total structural ceiling collapse. Creates an upgraded climate-resilient 10-bed Primary Health Centre equipped with teleconsultation link to AIIMS Deoghar.',
-    civicEngineeringScope: [
-      'Pre-fabricated earthquake-resistant two-storey clinical building (4,800 sq ft)',
-      'Solar-backed cold chain for essential vaccines and 24x7 labor room',
-      'Telemedicine workstation with high-speed BharatNet optical fiber connectivity'
-    ],
-    budgetBreakdown: [
-      { item: 'Civil Construction & Medical Grade Flooring', costINR_Lakhs: 210 },
-      { item: 'Maternal Delivery Room & Diagnostic Equipment', costINR_Lakhs: 110 },
-      { item: 'Solar Hybrid Power with 24-hr Battery Bank', costINR_Lakhs: 55 },
-      { item: 'BharatNet Tele-consultation Kiosk & IT Hardware', costINR_Lakhs: 45 }
-    ],
-    demographicBenefits: [
-      'Reduces travel distance for institutional delivery from 35 km to under 4 km for 74% SC/ST populace',
-      'Projected reduction in infant and maternal mortality by 38% in Shikaripara block'
-    ],
-    gatiShaktiIntegration: 'Integrated with PM Ayushman Bharat Health Infrastructure Mission (PM-ABHIM) regional network.',
-    executionMilestones: [
-      { month: 'Month 1-2', target: 'Demolition of condemned building and foundation casting' },
-      { month: 'Month 3-5', target: 'Modular structure assembly and medical electrical installations' },
-      { month: 'Month 6', target: 'Medical equipment calibration, tele-link verification and staff deployment' }
-    ],
-    aiPolicyRecommendation: 'HIGH HUMANITARIAN IMPACT: Immediate life-saving capability for high-vulnerability tribal corridor.',
-    associatedRequestCount: 312
   }
 ];
 

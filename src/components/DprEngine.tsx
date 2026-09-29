@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { DetailedProjectReport, IssueCategory } from '../types';
-import { INITIAL_DPRS, DISTRICT_METRICS } from '../data/mockData';
+import { INITIAL_DPRS, DISTRICT_METRICS, ALL_INDIAN_STATES } from '../data/mockData';
 import { generateAiDpr, askPolicyCopilot } from '../services/gemini';
 import { 
   FileText, 
@@ -191,14 +191,11 @@ export const DprEngine: React.FC<DprEngineProps> = ({
                   onChange={(e) => setStateName(e.target.value)}
                   className="w-full text-xs rounded-xl border border-slate-300 p-2.5 bg-white focus:border-indigo-500"
                 >
-                  <option value="Uttar Pradesh">Uttar Pradesh</option>
-                  <option value="Jharkhand">Jharkhand</option>
-                  <option value="Odisha">Odisha</option>
-                  <option value="Bihar">Bihar</option>
-                  <option value="Maharashtra">Maharashtra</option>
-                  <option value="Tamil Nadu">Tamil Nadu</option>
-                  <option value="Haryana">Haryana</option>
-                  <option value="Assam">Assam</option>
+                  {ALL_INDIAN_STATES.map((st) => (
+                    <option key={st} value={st}>
+                      {st}
+                    </option>
+                  ))}
                 </select>
               </div>
 
