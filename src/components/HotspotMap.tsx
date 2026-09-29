@@ -15,9 +15,15 @@ import {
   Activity,
   Maximize2,
   ShieldCheck,
-  Flame
+  Flame,
+  Search,
+  Crosshair,
+  Navigation,
+  Globe,
+  Loader2
 } from 'lucide-react';
 import L from 'leaflet';
+import { geocodeLocationPrecise, getLiveBrowserGps } from '../services/geocoding';
 
 interface HotspotMapProps {
   requests: CitizenRequest[];
@@ -33,28 +39,33 @@ export const HotspotMap: React.FC<HotspotMapProps> = ({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markersRef = useRef<L.LayerGroup | null>(null);
+  const gpsMarkerRef = useRef<L.Marker | null>(null);
 
   const [selectedDistrict, setSelectedDistrict] = useState<DistrictMetric>(DISTRICT_METRICS[0]);
   const [selectedCitizenIssue, setSelectedCitizenIssue] = useState<CitizenRequest | null>(requests[0] || null);
   const [activeLayer, setActiveLayer] = useState<'all' | 'live_issues' | 'aspirational' | 'gatishakti' | 'water' | 'roads'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchingLocation, setIsSearchingLocation] = useState(false);
+  const [isGettingGps, setIsGettingGps] = useState(false);
+  const [userGpsLocation, setUserGpsLocation] = useState<[number, number] | null>(null);
+  const prevRequestsLengthRef = useRef(requests.length);
 
   // Initialize Leaflet Map
   useEffect(() => {
     if (!mapContainerRef.current || mapInstanceRef.current) return;
 
-    // Centered on India
+    // Center on India
     const map = L.map(mapContainerRef.current, {
       center: [22.8, 81.5],
       zoom: 5,
       minZoom: 4,
-      maxZoom: 12,
+      maxZoom: 18,
       zoomControl: true
     });
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors | JanSetu National GIS Engine',
-      maxZoom: 18
+      maxZoom: 19
     }).addTo(map);
 
     const markersGroup = L.layerGroup().addTo(map);
@@ -67,13 +78,25 @@ export const HotspotMap: React.FC<HotspotMapProps> = ({
     };
   }, []);
 
+  // When a new request arrives, auto-fly to its exact pinpoint location
+  useEffect(() => {
+    if (requests.length > prevRequestsLengthRef.current && requests.length > 0) {
+      const latestReq = requests[0];
+      setSelectedCitizenIssue(latestReq);
+      if (mapInstanceRef.current && latestReq.coordinates) {
+        mapInstanceRef.current.flyTo(latestReq.coordinates, 14, { duration: 1.5 });
+      }
+    }
+    prevRequestsLengthRef.current = requests.length;
+  }, [requests]);
+
   // Update map markers when layer or requests change
   useEffect(() => {
     if (!markersRef.current || !mapInstanceRef.current) return;
 
     markersRef.current.clearLayers();
 
-    // 1. Render Live Individual Citizen Grievances / Distress Hotspots
+    // 1. Render Live Individual Citizen Grievances / Distress Hotspots with sharp pinpoint drop-pins
     if (activeLayer === 'all' || activeLayer === 'live_issues' || activeLayer === 'water' || activeLayer === 'roads') {
       requests.forEach((req) => {
         if (activeLayer === 'water' && !req.category.includes('Water')) return;
@@ -92,54 +115,93 @@ export const HotspotMap: React.FC<HotspotMapProps> = ({
           ? '⚡'
           : '🚨';
 
+        const pinColor = req.severity === 'Critical' ? '#ef4444' : req.category.includes('Water') ? '#0284c7' : '#ea580c';
+        const pinSize = isReqSelected ? 46 : 38;
+
+        // Custom High-Precision SVG Teardrop Pin with sharp bottom tip & ground pulse
         const issueHtml = `
-          <div style="
-            position: relative;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: ${isReqSelected ? '38px' : '30px'};
-            height: ${isReqSelected ? '38px' : '30px'};
-            border-radius: 50%;
-            background: #ffffff;
-            border: 3px solid ${req.severity === 'Critical' ? '#ef4444' : '#f97316'};
-            box-shadow: 0 4px 14px rgba(0,0,0,0.35);
-            font-size: ${isReqSelected ? '18px' : '14px'};
-            cursor: pointer;
-          ">
-            <span>${iconEmoji}</span>
+          <div style="position: relative; width: ${pinSize}px; height: ${pinSize + 10}px; display: flex; flex-direction: column; align-items: center; cursor: pointer;">
+            <!-- Radar Ripple on ground point -->
             <div style="
               position: absolute;
-              inset: -5px;
+              bottom: 0px;
+              left: 50%;
+              transform: translateX(-50%);
+              width: 14px;
+              height: 14px;
               border-radius: 50%;
-              border: 2px solid ${req.severity === 'Critical' ? '#ef4444' : '#f97316'};
-              animation: ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+              background: ${pinColor}44;
+              border: 2px solid ${pinColor};
+              animation: ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
             "></div>
+
+            <!-- Ground Target Dot -->
+            <div style="
+              position: absolute;
+              bottom: 4px;
+              left: 50%;
+              transform: translateX(-50%);
+              width: 6px;
+              height: 6px;
+              border-radius: 50%;
+              background: #0f172a;
+              border: 1.5px solid #ffffff;
+            "></div>
+
+            <!-- Precision Teardrop Pin Shape -->
+            <div style="
+              position: relative;
+              z-index: 2;
+              width: ${pinSize}px;
+              height: ${pinSize}px;
+              border-radius: 50% 50% 50% 0;
+              transform: rotate(-45deg);
+              background: ${pinColor};
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              box-shadow: 0 4px 14px rgba(0,0,0,0.45);
+              border: ${isReqSelected ? '3px solid #ffffff' : '2px solid #ffffff'};
+              transition: transform 0.2s ease;
+            ">
+              <div style="
+                transform: rotate(45deg);
+                font-size: ${isReqSelected ? '18px' : '15px'};
+                line-height: 1;
+              ">
+                ${iconEmoji}
+              </div>
+            </div>
           </div>
         `;
 
         const reqIcon = L.divIcon({
           className: 'custom-citizen-req-marker',
           html: issueHtml,
-          iconSize: [34, 34],
-          iconAnchor: [17, 17]
+          iconSize: [pinSize, pinSize + 10],
+          iconAnchor: [pinSize / 2, pinSize + 8],
+          popupAnchor: [0, -(pinSize + 8)]
         });
 
         const reqMarker = L.marker(req.coordinates, { icon: reqIcon });
 
         reqMarker.on('click', () => {
           setSelectedCitizenIssue(req);
-          mapInstanceRef.current?.flyTo(req.coordinates, 8, { duration: 1.0 });
+          mapInstanceRef.current?.flyTo(req.coordinates, 14, { duration: 1.2 });
         });
 
         reqMarker.bindTooltip(`
-          <div style="font-family: sans-serif; font-size: 12px; padding: 4px;">
-            <div style="font-weight: 800; color: #002663;">${req.title}</div>
-            <div style="color: #475569; font-size: 11px;">📍 ${req.blockOrWard || req.district}, ${req.state}</div>
-            <div style="color: #ef4444; font-weight: 700; margin-top: 2px;">⚡ Priority Score: ${req.urgencyScore}/100 (${req.severity})</div>
-            <div style="color: #15803d; font-size: 10px; font-weight: 600;">Token: ${req.trackingNumber}</div>
+          <div style="font-family: sans-serif; font-size: 12px; padding: 6px; max-width: 240px;">
+            <div style="font-weight: 800; color: #002663; font-size: 13px;">${req.title}</div>
+            <div style="color: #475569; font-size: 11px; margin-top: 2px;">📍 ${req.blockOrWard || req.district}, ${req.state}</div>
+            <div style="color: #64748b; font-size: 10px; font-family: monospace;">🌐 Lat: ${req.coordinates[0].toFixed(4)}°, Lng: ${req.coordinates[1].toFixed(4)}°</div>
+            <div style="color: #ef4444; font-weight: 700; margin-top: 4px;">⚡ Priority Score: ${req.urgencyScore}/100 (${req.severity})</div>
+            <div style="color: #15803d; font-size: 10px; font-weight: 600; margin-top: 2px;">Token: ${req.trackingNumber}</div>
           </div>
-        `);
+        `, {
+          direction: 'top',
+          offset: [0, -(pinSize + 6)]
+        });
 
         markersRef.current?.addLayer(reqMarker);
       });
@@ -154,6 +216,7 @@ export const HotspotMap: React.FC<HotspotMapProps> = ({
         if (activeLayer === 'roads' && !dist.topSector.includes('Roads')) return;
 
         const isSelected = selectedDistrict.id === dist.id;
+        const pinSize = isSelected ? 36 : 28;
 
         const iconHtml = `
           <div style="
@@ -161,8 +224,8 @@ export const HotspotMap: React.FC<HotspotMapProps> = ({
             display: flex;
             align-items: center;
             justify-content: center;
-            width: ${isSelected ? '36px' : '28px'};
-            height: ${isSelected ? '36px' : '28px'};
+            width: ${pinSize}px;
+            height: ${pinSize}px;
             border-radius: 50%;
             background: ${dist.compositeDeficitScore > 85 ? '#ef4444' : '#f97316'};
             border: 3px solid ${isSelected ? '#ffffff' : '#fde047'};
@@ -178,21 +241,22 @@ export const HotspotMap: React.FC<HotspotMapProps> = ({
         const customIcon = L.divIcon({
           className: 'custom-leaflet-marker',
           html: iconHtml,
-          iconSize: [32, 32],
-          iconAnchor: [16, 16]
+          iconSize: [pinSize, pinSize],
+          iconAnchor: [pinSize / 2, pinSize / 2]
         });
 
         const marker = L.marker(dist.coordinates, { icon: customIcon });
 
         marker.on('click', () => {
           setSelectedDistrict(dist);
-          mapInstanceRef.current?.flyTo(dist.coordinates, 7, { duration: 1.2 });
+          mapInstanceRef.current?.flyTo(dist.coordinates, 10, { duration: 1.2 });
         });
 
         marker.bindTooltip(`
-          <div style="font-family: sans-serif; font-size: 12px; padding: 2px 4px;">
+          <div style="font-family: sans-serif; font-size: 12px; padding: 4px;">
             <strong>${dist.name}, ${dist.state}</strong><br/>
-            <span style="color: #ea580c;">Deficit Score: ${dist.compositeDeficitScore}/100</span><br/>
+            <span style="color: #64748b; font-size: 10px;">🌐 ${dist.coordinates[0].toFixed(4)}° N, ${dist.coordinates[1].toFixed(4)}° E</span><br/>
+            <span style="color: #ea580c; font-weight: bold;">Deficit Score: ${dist.compositeDeficitScore}/100</span><br/>
             <span>${dist.totalRequests} aggregated citizen demands</span>
           </div>
         `);
@@ -202,27 +266,97 @@ export const HotspotMap: React.FC<HotspotMapProps> = ({
     }
   }, [activeLayer, selectedDistrict, selectedCitizenIssue, requests]);
 
-  const filteredDistricts = DISTRICT_METRICS.filter(
-    (d) =>
-      d.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      d.state.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      d.topSector.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Handle Location Search on Map
+  const handleSearchLocation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchQuery.trim()) return;
+
+    setIsSearchingLocation(true);
+    try {
+      const coords = await geocodeLocationPrecise(searchQuery, searchQuery, '', searchQuery);
+      if (mapInstanceRef.current && coords) {
+        mapInstanceRef.current.flyTo(coords, 14, { duration: 1.5 });
+
+        // Add a temporary target pulse
+        const targetIcon = L.divIcon({
+          className: 'search-target-marker',
+          html: `
+            <div style="position: relative; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">
+              <div style="position: absolute; inset: 0; border-radius: 50%; border: 3px solid #0284c7; animation: ping 1.2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+              <div style="width: 14px; height: 14px; border-radius: 50%; background: #0284c7; border: 2px solid white; box-shadow: 0 0 10px #0284c7;"></div>
+            </div>
+          `,
+          iconSize: [40, 40],
+          iconAnchor: [20, 20]
+        });
+
+        const targetMarker = L.marker(coords, { icon: targetIcon }).addTo(mapInstanceRef.current);
+        targetMarker.bindTooltip(`<strong>📍 Location: ${searchQuery}</strong><br/><span style="font-size: 10px; font-family: monospace;">[${coords[0].toFixed(4)}, ${coords[1].toFixed(4)}]</span>`, { permanent: true, direction: 'top' });
+        
+        setTimeout(() => {
+          if (mapInstanceRef.current) {
+            mapInstanceRef.current.removeLayer(targetMarker);
+          }
+        }, 8000);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSearchingLocation(false);
+    }
+  };
+
+  // Handle Live GPS Location Pinning
+  const handleLocateMe = async () => {
+    setIsGettingGps(true);
+    try {
+      const gps = await getLiveBrowserGps();
+      setUserGpsLocation(gps.coordinates);
+
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.flyTo(gps.coordinates, 15, { duration: 1.5 });
+
+        if (gpsMarkerRef.current) {
+          mapInstanceRef.current.removeLayer(gpsMarkerRef.current);
+        }
+
+        const myGpsIcon = L.divIcon({
+          className: 'my-gps-marker',
+          html: `
+            <div style="position: relative; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;">
+              <div style="position: absolute; inset: -4px; border-radius: 50%; background: rgba(59, 130, 246, 0.25); animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+              <div style="position: relative; width: 18px; height: 18px; border-radius: 50%; background: #2563eb; border: 3px solid #ffffff; box-shadow: 0 0 14px rgba(37, 99, 235, 0.8);"></div>
+            </div>
+          `,
+          iconSize: [44, 44],
+          iconAnchor: [22, 22]
+        });
+
+        const marker = L.marker(gps.coordinates, { icon: myGpsIcon }).addTo(mapInstanceRef.current);
+        marker.bindTooltip(`<strong>📍 Your Live GPS Location</strong><br/><span style="font-size: 10px;">Accuracy: ~${gps.accuracyMeters || 10}m</span><br/><span style="font-size: 10px; font-family: monospace;">${gps.coordinates[0].toFixed(5)}° N, ${gps.coordinates[1].toFixed(5)}° E</span>`, { permanent: true, direction: 'top' });
+        gpsMarkerRef.current = marker;
+      }
+    } catch (err) {
+      alert('Could not access device GPS. Please enable location permissions in your browser.');
+    } finally {
+      setIsGettingGps(false);
+    }
+  };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
       {/* Top Banner & KPI Strip */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900 text-white rounded-2xl p-6 border border-slate-800 shadow-xl">
         <div>
           <div className="flex items-center gap-2 text-xs font-bold text-amber-400 uppercase tracking-widest mb-1">
             <Compass className="w-4 h-4 text-amber-400" />
-            <span>Shasan-Drishti (शासन-दृष्टि) • Real-Time Geospatial Command Center</span>
+            <span>Shasan-Drishti (शासन-दृष्टि) • High-Precision Geospatial Command Center</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
             National Infrastructure Demand Hotspots
           </h1>
           <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-2xl">
-            Live real-time aggregation across all 28 States & UTs. Whenever an issue is submitted via Voice, Photo, or WhatsApp, it immediately appears on the map at the exact location.
+            Live sub-meter precision pinning across all 28 States & UTs. Grievances submitted via WhatsApp or Citizen Portal pin immediately to the exact street/town coordinates.
           </p>
         </div>
 
@@ -237,18 +371,20 @@ export const HotspotMap: React.FC<HotspotMapProps> = ({
             <span className="text-lg font-black text-amber-400">28 States + 8 UTs</span>
           </div>
           <div className="bg-slate-800/80 px-3.5 py-2.5 rounded-xl border border-slate-700/60">
-            <span className="text-[10px] text-slate-400 font-semibold block uppercase">Funding Gap</span>
-            <span className="text-lg font-black text-emerald-400">₹982.5 Cr</span>
+            <span className="text-[10px] text-slate-400 font-semibold block uppercase">Precision Mode</span>
+            <span className="text-lg font-black text-emerald-400 flex items-center gap-1">
+              <Crosshair className="w-4 h-4 text-emerald-400" /> GPS Locked
+            </span>
           </div>
         </div>
       </div>
 
-      {/* Layer Filters & Search Controls */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs flex flex-wrap items-center justify-between gap-4">
+      {/* Layer Filters & Real-Time Pinpoint Search */}
+      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
         {/* Layer Buttons */}
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-bold text-slate-500 flex items-center gap-1 mr-1">
-            <Layers className="w-3.5 h-3.5 text-slate-600" /> Map Layers:
+            <Layers className="w-3.5 h-3.5 text-slate-600" /> Layers:
           </span>
           <button
             onClick={() => setActiveLayer('all')}
@@ -258,7 +394,7 @@ export const HotspotMap: React.FC<HotspotMapProps> = ({
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
-            All Hotspots & Issues ({DISTRICT_METRICS.length + requests.length})
+            All Pins ({DISTRICT_METRICS.length + requests.length})
           </button>
           <button
             onClick={() => setActiveLayer('live_issues')}
@@ -269,7 +405,7 @@ export const HotspotMap: React.FC<HotspotMapProps> = ({
             }`}
           >
             <Flame className="w-3.5 h-3.5" />
-            <span>Live Logged Issues ({requests.length})</span>
+            <span>Live Issues ({requests.length})</span>
           </button>
           <button
             onClick={() => setActiveLayer('aspirational')}
@@ -279,7 +415,7 @@ export const HotspotMap: React.FC<HotspotMapProps> = ({
                 : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
             }`}
           >
-            ★ NITI Aspirational Districts
+            ★ NITI Aspirational
           </button>
           <button
             onClick={() => setActiveLayer('water')}
@@ -303,15 +439,41 @@ export const HotspotMap: React.FC<HotspotMapProps> = ({
           </button>
         </div>
 
-        {/* Quick Search */}
-        <div className="w-full sm:w-64">
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search Ranaghat, state, district..."
-            className="w-full text-xs rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-          />
+        {/* Live Precision Location Search & GPS Pinpoint Button */}
+        <div className="flex items-center gap-2">
+          <form onSubmit={handleSearchLocation} className="relative flex-1 sm:w-72">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Pinpoint place (Ranaghat, Patna, 741201)..."
+              className="w-full text-xs rounded-xl border border-slate-300 pl-8 pr-16 py-2 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-xs"
+            />
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+            <button
+              type="submit"
+              disabled={isSearchingLocation}
+              className="absolute right-1 top-1/2 -translate-y-1/2 px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold transition cursor-pointer flex items-center gap-1"
+            >
+              {isSearchingLocation ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Pin'}
+            </button>
+          </form>
+
+          {/* Device GPS Locator */}
+          <button
+            type="button"
+            onClick={handleLocateMe}
+            disabled={isGettingGps}
+            title="Locate my exact current GPS position"
+            className="p-2 rounded-xl bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-600 border border-slate-200 transition cursor-pointer flex items-center gap-1 text-xs font-bold shadow-xs shrink-0"
+          >
+            {isGettingGps ? (
+              <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+            ) : (
+              <Crosshair className="w-4 h-4 text-blue-600" />
+            )}
+            <span className="hidden sm:inline">My GPS</span>
+          </button>
         </div>
       </div>
 
@@ -321,16 +483,22 @@ export const HotspotMap: React.FC<HotspotMapProps> = ({
         <div className="lg:col-span-8 bg-white rounded-2xl border border-slate-200 shadow-md overflow-hidden relative">
           <div
             ref={mapContainerRef}
-            className="w-full h-[600px] z-10"
-            style={{ minHeight: '540px' }}
+            className="w-full h-[620px] z-10"
+            style={{ minHeight: '560px' }}
           ></div>
+
+          {/* Map Overlay Coordinates Indicator */}
+          <div className="absolute top-4 left-4 z-20 bg-slate-900/90 backdrop-blur-md text-white px-3 py-1.5 rounded-lg border border-slate-700/80 shadow-lg text-[11px] font-mono flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>GIS Precision Active • 1:1 Coordinate Mapping</span>
+          </div>
 
           {/* Map Overlay Legend */}
           <div className="absolute bottom-4 left-4 z-20 bg-white/95 backdrop-blur-xs p-3.5 rounded-xl border border-slate-200 shadow-lg text-[11px] space-y-1.5">
             <span className="font-bold text-slate-800 block">Live Map Legend</span>
             <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full bg-rose-500 animate-ping"></span>
-              <span className="text-slate-700 font-semibold">Live Citizen Issue Beacon</span>
+              <span className="w-3.5 h-3.5 rounded-full bg-rose-500 border-2 border-white shadow-xs"></span>
+              <span className="text-slate-700 font-semibold">Live Citizen Issue Drop-Pin</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="w-3 h-3 rounded-full border-2 border-yellow-400 bg-amber-500"></span>
@@ -360,10 +528,17 @@ export const HotspotMap: React.FC<HotspotMapProps> = ({
                 <h3 className="text-base font-extrabold text-slate-900 mt-2 leading-snug">
                   {selectedCitizenIssue.title}
                 </h3>
-                <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-1">
+                <div className="flex items-center gap-1.5 text-xs text-slate-600 mt-1 font-medium">
                   <MapPin className="w-3.5 h-3.5 text-orange-500 shrink-0" />
                   <span>
                     {selectedCitizenIssue.blockOrWard || selectedCitizenIssue.district}, {selectedCitizenIssue.state}
+                  </span>
+                </div>
+                {/* Exact Coordinates Display */}
+                <div className="mt-2 bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-lg flex items-center justify-between text-[11px] font-mono text-slate-600">
+                  <span>📍 GPS Coordinates:</span>
+                  <span className="font-bold text-blue-700">
+                    {selectedCitizenIssue.coordinates[0].toFixed(4)}° N, {selectedCitizenIssue.coordinates[1].toFixed(4)}° E
                   </span>
                 </div>
               </div>
@@ -406,26 +581,26 @@ export const HotspotMap: React.FC<HotspotMapProps> = ({
           ) : (
             <div className="text-center py-6 text-slate-400">
               <MapPin className="w-8 h-8 mx-auto mb-2 text-slate-300" />
-              <p className="text-xs">Click on any marker on the map to inspect details</p>
+              <p className="text-xs">Click on any pin on the map to inspect details</p>
             </div>
           )}
 
           {/* Quick Hotspot / Issue Switcher List */}
           <div className="pt-2 border-t border-slate-100">
             <span className="text-[11px] font-bold text-slate-500 block mb-2">
-              Recently Logged Locations on Map ({requests.length}):
+              Recently Logged Pins on Map ({requests.length}):
             </span>
-            <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
-              {requests.slice(0, 8).map((r) => (
+            <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+              {requests.slice(0, 10).map((r) => (
                 <button
                   key={r.id}
                   onClick={() => {
                     setSelectedCitizenIssue(r);
-                    mapInstanceRef.current?.flyTo(r.coordinates, 8, { duration: 1.0 });
+                    mapInstanceRef.current?.flyTo(r.coordinates, 14, { duration: 1.2 });
                   }}
-                  className={`w-full text-left p-2 rounded-lg text-xs transition cursor-pointer border ${
+                  className={`w-full text-left p-2.5 rounded-xl text-xs transition cursor-pointer border ${
                     selectedCitizenIssue?.id === r.id
-                      ? 'bg-blue-50 border-blue-300 text-blue-900 font-bold'
+                      ? 'bg-blue-50 border-blue-300 text-blue-900 font-bold shadow-xs'
                       : 'bg-slate-50 border-slate-100 hover:bg-slate-100 text-slate-700'
                   }`}
                 >
@@ -434,6 +609,9 @@ export const HotspotMap: React.FC<HotspotMapProps> = ({
                     <span className="font-bold text-rose-600">{r.severity}</span>
                   </div>
                   <div className="truncate font-semibold mt-0.5">{r.district}, {r.state}</div>
+                  <div className="text-[10px] font-mono text-slate-500 mt-0.5">
+                    📍 {r.coordinates[0].toFixed(4)}°, {r.coordinates[1].toFixed(4)}°
+                  </div>
                 </button>
               ))}
             </div>

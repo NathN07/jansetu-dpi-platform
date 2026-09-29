@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { generateWhatsAppBotReply } from '../services/gemini';
 import { resolveLocationCoordinates } from '../data/mockData';
+import { geocodeLocationPrecise } from '../services/geocoding';
 
 interface WhatsAppSimulatorProps {
   onAddRequest?: (req: CitizenRequest) => void;
@@ -74,9 +75,9 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({ onAddReque
       const result = await generateWhatsAppBotReply(textToSend, newHistory);
       const trackingNumber = `JS-WA-2026-${Math.floor(1000 + Math.random() * 9000)}`;
 
-      // Create official citizen request for National Map and Database
+      // Create official citizen request for National Map and Database with precision geocoding
       if (onAddRequest) {
-        const coords = resolveLocationCoordinates(result.district, result.state);
+        const coords = await geocodeLocationPrecise(textToSend, result.district, result.state);
         const newReq: CitizenRequest = {
           id: `req-wa-${Date.now()}`,
           trackingNumber,

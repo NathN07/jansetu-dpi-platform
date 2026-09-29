@@ -50,94 +50,10 @@ export const ALL_INDIAN_STATES = [
   'Andaman and Nicobar Islands'
 ];
 
-export function resolveLocationCoordinates(districtName: string = '', stateName: string = ''): [number, number] {
-  const d = (districtName || '').toLowerCase();
-  const s = (stateName || '').toLowerCase();
+import { resolvePreciseOfflineCoordinates } from '../services/geocoding';
 
-  // Specific city / district coordinates
-  if (d.includes('ranaghat') || d.includes('রানাঘাট')) return [23.1800, 88.5800];
-  if (d.includes('nadia')) return [23.4700, 88.5500];
-  if (d.includes('kolkata') || d.includes('calcutta')) return [22.5726, 88.3639];
-  if (d.includes('birbhum')) return [23.8400, 87.6100];
-  if (d.includes('darjeeling')) return [27.0410, 88.2663];
-  if (d.includes('murshidabad')) return [24.1800, 88.2700];
-  if (d.includes('bahraich')) return [27.5750, 81.5950];
-  if (d.includes('lucknow')) return [26.8467, 80.9462];
-  if (d.includes('varanasi') || d.includes('banaras')) return [25.3176, 82.9739];
-  if (d.includes('patna')) return [25.5941, 85.1376];
-  if (d.includes('bhojpur') || d.includes('ara')) return [25.5564, 84.6603];
-  if (d.includes('gaya')) return [24.7914, 85.0002];
-  if (d.includes('dumka')) return [24.2667, 87.2500];
-  if (d.includes('ranchi')) return [23.3441, 85.3096];
-  if (d.includes('nabarangpur')) return [19.2333, 82.5500];
-  if (d.includes('bhubaneswar') || d.includes('cuttack')) return [20.2961, 85.8245];
-  if (d.includes('mumbai')) return [19.0760, 72.8777];
-  if (d.includes('pune')) return [18.5204, 73.8567];
-  if (d.includes('gadchiroli')) return [20.1833, 80.0000];
-  if (d.includes('chennai')) return [13.0827, 80.2707];
-  if (d.includes('ramanathapuram') || d.includes('rameswaram')) return [9.3667, 78.8333];
-  if (d.includes('bengaluru') || d.includes('bangalore')) return [12.9716, 77.5946];
-  if (d.includes('raichur')) return [16.2000, 77.3500];
-  if (d.includes('hyderabad')) return [17.3850, 78.4867];
-  if (d.includes('ahmedabad')) return [23.0225, 72.5714];
-  if (d.includes('dahod')) return [22.8300, 74.2500];
-  if (d.includes('jaipur')) return [26.9124, 75.7873];
-  if (d.includes('jaisalmer')) return [26.9157, 70.9083];
-  if (d.includes('nuh') || d.includes('mewat') || d.includes('gurugram')) return [28.1167, 77.0167];
-  if (d.includes('delhi')) return [28.6139, 77.2090];
-  if (d.includes('chandigarh')) return [30.7333, 76.7794];
-  if (d.includes('amritsar') || d.includes('firozpur')) return [31.6340, 74.8723];
-  if (d.includes('chamba') || d.includes('shimla')) return [32.5500, 76.1200];
-  if (d.includes('haridwar') || d.includes('dehradun')) return [29.9457, 78.1642];
-  if (d.includes('baramulla') || d.includes('srinagar')) return [34.2000, 74.3400];
-  if (d.includes('kargil') || d.includes('leh')) return [34.5500, 76.1300];
-  if (d.includes('dhubri') || d.includes('guwahati')) return [26.0200, 89.9800];
-  if (d.includes('shillong') || d.includes('ri-bhoi')) return [25.9000, 91.8800];
-  if (d.includes('dhalai') || d.includes('agartala')) return [23.8500, 91.8500];
-  if (d.includes('chandel') || d.includes('imphal')) return [24.3200, 94.0000];
-  if (d.includes('kiphire') || d.includes('kohima')) return [25.8800, 94.7800];
-  if (d.includes('mamit') || d.includes('aizawl')) return [23.9300, 92.4800];
-  if (d.includes('namsai') || d.includes('itanagar')) return [27.6700, 95.8700];
-  if (d.includes('sikkim') || d.includes('gangtok')) return [27.3000, 88.2500];
-  if (d.includes('goa')) return [15.2800, 74.0000];
-  if (d.includes('bastar') || d.includes('raipur')) return [19.0700, 82.0300];
-  if (d.includes('barwani') || d.includes('bhopal')) return [22.0300, 74.9000];
-  if (d.includes('wayanad')) return [11.6854, 76.1320];
-
-  // State fallback centers
-  if (s.includes('west bengal') || s.includes('bengal')) return [23.1800, 88.3639];
-  if (s.includes('bihar')) return [25.5941, 85.1376];
-  if (s.includes('jharkhand')) return [23.6102, 85.2799];
-  if (s.includes('odisha')) return [20.9517, 85.0985];
-  if (s.includes('uttar pradesh')) return [26.8467, 80.9462];
-  if (s.includes('maharashtra')) return [19.7515, 75.7139];
-  if (s.includes('tamil')) return [11.1271, 78.6569];
-  if (s.includes('karnataka')) return [15.3173, 75.7139];
-  if (s.includes('telangana')) return [18.1124, 79.0193];
-  if (s.includes('andhra')) return [15.9129, 79.7400];
-  if (s.includes('kerala')) return [10.8505, 76.2711];
-  if (s.includes('gujarat')) return [22.2587, 71.1924];
-  if (s.includes('rajasthan')) return [27.0238, 74.2179];
-  if (s.includes('madhya pradesh')) return [22.9734, 78.6569];
-  if (s.includes('chhattisgarh')) return [21.2787, 81.8661];
-  if (s.includes('assam')) return [26.2006, 92.9376];
-  if (s.includes('punjab')) return [31.1471, 75.3412];
-  if (s.includes('haryana')) return [29.0588, 76.0856];
-  if (s.includes('himachal')) return [31.1048, 77.1734];
-  if (s.includes('uttarakhand')) return [30.0668, 79.0193];
-  if (s.includes('jammu')) return [33.7782, 76.5762];
-  if (s.includes('ladakh')) return [34.1526, 77.5771];
-  if (s.includes('delhi')) return [28.6139, 77.2090];
-  if (s.includes('tripura')) return [23.8438, 91.2868];
-  if (s.includes('meghalaya')) return [25.4670, 91.3662];
-  if (s.includes('manipur')) return [24.6637, 93.9063];
-  if (s.includes('nagaland')) return [26.1584, 94.5624];
-  if (s.includes('mizoram')) return [23.1645, 92.9376];
-  if (s.includes('arunachal')) return [28.2180, 94.7278];
-  if (s.includes('sikkim')) return [27.5330, 88.5122];
-  if (s.includes('goa')) return [15.2993, 74.1240];
-
-  return [22.5937, 78.9629];
+export function resolveLocationCoordinates(districtName: string = '', stateName: string = '', pinCode: string = ''): [number, number] {
+  return resolvePreciseOfflineCoordinates('', districtName, stateName, pinCode);
 }
 
 export const INITIAL_REQUESTS: CitizenRequest[] = [

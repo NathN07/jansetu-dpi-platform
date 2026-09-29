@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { CitizenRequest, IssueCategory, LanguageCode, SeverityLevel } from '../types';
 import { ALL_INDIAN_STATES, resolveLocationCoordinates } from '../data/mockData';
+import { geocodeLocationPrecise, getLiveBrowserGps } from '../services/geocoding';
 import { 
   Mic, 
   MicOff, 
@@ -18,7 +19,9 @@ import {
   Flame,
   ArrowRight,
   ShieldCheck,
-  RefreshCw
+  RefreshCw,
+  Crosshair,
+  Loader2
 } from 'lucide-react';
 import { analyzeInfrastructurePhoto, processCitizenVoiceOrText } from '../services/gemini';
 import confetti from 'canvas-confetti';
@@ -63,6 +66,9 @@ export const CitizenPortal: React.FC<CitizenPortalProps> = ({
   const [pinCode, setPinCode] = useState('271865');
   const [citizenName, setCitizenName] = useState('Rameshwar Kumar');
   const [phone, setPhone] = useState('+91 98765 43210');
+  const [customCoords, setCustomCoords] = useState<[number, number] | null>(null);
+  const [isLocatingGps, setIsLocatingGps] = useState(false);
+  const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
 
   // AI Processing status
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -275,8 +281,28 @@ export const CitizenPortal: React.FC<CitizenPortalProps> = ({
     }
   };
 
+  // GPS Geolocation handler
+  const handleGetGps = async () => {
+    setIsLocatingGps(true);
+    try {
+      const gps = await getLiveBrowserGps();
+      setCustomCoords(gps.coordinates);
+      setGpsAccuracy(gps.accuracyMeters || 10);
+      if (gps.reverseDetails?.district) setDistrict(gps.reverseDetails.district);
+      if (gps.reverseDetails?.state) setStateName(gps.reverseDetails.state);
+      if (gps.reverseDetails?.suburb || gps.reverseDetails?.road) {
+        setBlockOrWard(`${gps.reverseDetails.suburb || ''} ${gps.reverseDetails.road || ''}`.trim());
+      }
+      if (gps.reverseDetails?.postcode) setPinCode(gps.reverseDetails.postcode);
+    } catch (e) {
+      alert('Could not access GPS. Please ensure location permissions are enabled in your browser.');
+    } finally {
+      setIsLocatingGps(false);
+    }
+  };
+
   // Submit Final Request
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !description.trim()) {
       alert('Please provide a title and description or use voice/preset.');
@@ -291,10 +317,14 @@ export const CitizenPortal: React.FC<CitizenPortalProps> = ({
       'Tamil Nadu': 'TN',
       'Maharashtra': 'MH',
       'Haryana': 'HR',
-      'Rajasthan': 'RJ'
+      'Rajasthan': 'RJ',
+      'West Bengal': 'WB'
     };
     const code = stateCodes[stateName] || 'IN';
     const trackingNum = `JS-${code}-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    // Resolve high-precision coordinates
+    const finalCoords = customCoords || (await geocodeLocationPrecise(blockOrWard, district, stateName, pinCode));
 
     const newRequest: CitizenRequest = {
       id: `req-${Date.now()}`,
@@ -308,7 +338,7 @@ export const CitizenPortal: React.FC<CitizenPortalProps> = ({
       district,
       blockOrWard,
       pinCode,
-      coordinates: resolveLocationCoordinates(district, stateName),
+      coordinates: finalCoords,
       status: 'AI_Verified',
       severity: (aiAnalysisPreview?.severity as SeverityLevel) || 'High',
       urgencyScore: aiAnalysisPreview?.urgencyScore || 88,
@@ -353,6 +383,7 @@ export const CitizenPortal: React.FC<CitizenPortalProps> = ({
     setVoiceTranscript('');
     setPhotoPreview(null);
     setAiAnalysisPreview(null);
+    setCustomCoords(null);
   };
 
   // Text to Speech playback
@@ -771,9 +802,24 @@ export const CitizenPortal: React.FC<CitizenPortalProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    PIN Code (Auto-locates GPS):
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-slate-700">
+                      PIN Code (Auto-locates GPS):
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleGetGps}
+                      disabled={isLocatingGps}
+                      className="text-[11px] text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1 transition cursor-pointer"
+                    >
+                      {isLocatingGps ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <Crosshair className="w-3 h-3 text-blue-600" />
+                      )}
+                      <span>{customCoords ? 'GPS Locked' : 'Auto-Detect GPS'}</span>
+                    </button>
+                  </div>
                   <input
                     type="text"
                     value={pinCode}
@@ -782,6 +828,22 @@ export const CitizenPortal: React.FC<CitizenPortalProps> = ({
                     className="w-full text-sm rounded-xl border border-slate-300 p-2.5 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
                   />
                 </div>
+              </div>
+
+              {/* Coordinates Pinpoint Indicator */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 flex items-center justify-between text-xs text-slate-600">
+                <div className="flex items-center gap-1.5 font-medium">
+                  <MapPin className="w-3.5 h-3.5 text-orange-500" />
+                  <span>Target Map Pin:</span>
+                  <span className="font-semibold text-slate-800 truncate max-w-[200px]">
+                    {blockOrWard || district}, {stateName}
+                  </span>
+                </div>
+                <span className="font-mono text-[11px] bg-white px-2 py-0.5 rounded border border-slate-200 text-blue-700 font-bold">
+                  {customCoords
+                    ? `GPS: ${customCoords[0].toFixed(4)}°, ${customCoords[1].toFixed(4)}° (±${gpsAccuracy || 10}m)`
+                    : 'Auto-Geocoded on Submit'}
+                </span>
               </div>
 
               <div>
