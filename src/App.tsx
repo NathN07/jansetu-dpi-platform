@@ -14,22 +14,56 @@ import { HotspotMap } from './components/HotspotMap';
 import { DprEngine } from './components/DprEngine';
 import { WhatsAppSimulator } from './components/WhatsAppSimulator';
 import { NationalAnalytics } from './components/NationalAnalytics';
-import { PitchDeckModal } from './components/PitchDeckModal';
 import { ApiKeyModal } from './components/ApiKeyModal';
 import { StatusTracker } from './components/StatusTracker';
-import { ShieldCheck, Lock, Sparkles, Presentation } from 'lucide-react';
+import { OfficerAuthModal } from './components/OfficerAuthModal';
+import { ShieldCheck, Lock } from 'lucide-react';
+
+const REQUESTS_STORAGE_KEY = 'JANSETU_SAVED_REQUESTS_V2';
+const DPRS_STORAGE_KEY = 'JANSETU_SAVED_DPRS_V2';
+const ROLE_STORAGE_KEY = 'JANSETU_USER_ROLE_V2';
+
+function loadPersistedRequests(): CitizenRequest[] {
+  try {
+    const saved = localStorage.getItem(REQUESTS_STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (e) {
+    console.error('Error loading persisted requests', e);
+  }
+  return INITIAL_REQUESTS;
+}
+
+function loadPersistedDprs(): DetailedProjectReport[] {
+  try {
+    const saved = localStorage.getItem(DPRS_STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (e) {
+    console.error('Error loading persisted DPRs', e);
+  }
+  return INITIAL_DPRS;
+}
 
 export const App: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<string>('citizen');
   const [selectedLanguage, setSelectedLanguage] = useState<LanguageCode>('hi');
-  const [userRole, setUserRole] = useState<UserRole>('official'); // Default to officer/judge mode for hackathon review, easily toggleable
-  const [requests, setRequests] = useState<CitizenRequest[]>(INITIAL_REQUESTS);
-  const [dprs, setDprs] = useState<DetailedProjectReport[]>(INITIAL_DPRS);
+  const [userRole, setUserRole] = useState<UserRole>(() => {
+    return (sessionStorage.getItem(ROLE_STORAGE_KEY) as UserRole) || 'citizen';
+  });
+
+  // Persistent state
+  const [requests, setRequests] = useState<CitizenRequest[]>(loadPersistedRequests);
+  const [dprs, setDprs] = useState<DetailedProjectReport[]>(loadPersistedDprs);
 
   // Modals
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
-  const [isPitchDeckOpen, setIsPitchDeckOpen] = useState(false);
   const [isStatusTrackerOpen, setIsStatusTrackerOpen] = useState(false);
+  const [isOfficerAuthModalOpen, setIsOfficerAuthModalOpen] = useState(false);
 
   // Live AI status
   const [isLiveAi, setIsLiveAi] = useState(isLiveAiAvailable());
@@ -45,8 +79,29 @@ export const App: React.FC = () => {
     setIsLiveAi(isLiveAiAvailable());
   }, []);
 
+  // Sync to localStorage whenever requests change
+  useEffect(() => {
+    try {
+      localStorage.setItem(REQUESTS_STORAGE_KEY, JSON.stringify(requests));
+    } catch (e) {
+      console.error('Failed to save requests to localStorage', e);
+    }
+  }, [requests]);
+
+  // Sync to localStorage whenever dprs change
+  useEffect(() => {
+    try {
+      localStorage.setItem(DPRS_STORAGE_KEY, JSON.stringify(dprs));
+    } catch (e) {
+      console.error('Failed to save DPRs to localStorage', e);
+    }
+  }, [dprs]);
+
   const handleAddRequest = (req: CitizenRequest) => {
-    setRequests((prev) => [req, ...prev]);
+    setRequests((prev) => {
+      const updated = [req, ...prev];
+      return updated;
+    });
   };
 
   const handleUpvoteRequest = (id: string) => {
@@ -56,7 +111,10 @@ export const App: React.FC = () => {
   };
 
   const handleAddDpr = (newDpr: DetailedProjectReport) => {
-    setDprs((prev) => [newDpr, ...prev]);
+    setDprs((prev) => {
+      const updated = [newDpr, ...prev];
+      return updated;
+    });
   };
 
   const handleUpdateDprStatus = (id: string, newStatus: DetailedProjectReport['status']) => {
@@ -65,8 +123,20 @@ export const App: React.FC = () => {
     );
   };
 
-  const handleSelectDistrictForDPR = (district: DistrictMetric) => {
+  const handleOfficerAuthSuccess = () => {
     setUserRole('official');
+    sessionStorage.setItem(ROLE_STORAGE_KEY, 'official');
+  };
+
+  const handleSetCitizenRole = () => {
+    setUserRole('citizen');
+    sessionStorage.setItem(ROLE_STORAGE_KEY, 'citizen');
+    if (currentTab !== 'citizen' && currentTab !== 'whatsapp') {
+      setCurrentTab('citizen');
+    }
+  };
+
+  const handleSelectDistrictForDPR = (district: DistrictMetric) => {
     setPreselectedHotspot({
       district: district.name,
       state: district.state,
@@ -77,7 +147,10 @@ export const App: React.FC = () => {
   };
 
   const handleSelectRequestForDPR = (req: CitizenRequest) => {
-    setUserRole('official');
+    if (userRole !== 'official') {
+      setIsOfficerAuthModalOpen(true);
+      return;
+    }
     setPreselectedHotspot({
       district: req.district,
       state: req.state,
@@ -97,9 +170,9 @@ export const App: React.FC = () => {
         setSelectedLanguage={setSelectedLanguage}
         isLiveAi={isLiveAi}
         userRole={userRole}
-        setUserRole={setUserRole}
+        onRequestOfficerLogin={() => setIsOfficerAuthModalOpen(true)}
+        onSetCitizenRole={handleSetCitizenRole}
         onOpenApiKeyModal={() => setIsApiKeyModalOpen(true)}
-        onOpenPitchDeck={() => setIsPitchDeckOpen(true)}
         onOpenTrackModal={() => setIsStatusTrackerOpen(true)}
       />
 
@@ -163,28 +236,19 @@ export const App: React.FC = () => {
               </button>
 
               {userRole === 'official' ? (
-                <>
-                  <button
-                    onClick={() => setIsPitchDeckOpen(true)}
-                    className="text-slate-300 hover:text-white flex items-center gap-1 cursor-pointer"
-                  >
-                    <Presentation className="w-3.5 h-3.5" />
-                    <span>Pitch Deck (12 Slides)</span>
-                  </button>
-                  <button
-                    onClick={() => setIsApiKeyModalOpen(true)}
-                    className="text-slate-300 hover:text-white cursor-pointer"
-                  >
-                    AI Config
-                  </button>
-                </>
+                <button
+                  onClick={() => setIsApiKeyModalOpen(true)}
+                  className="text-slate-300 hover:text-white cursor-pointer"
+                >
+                  AI Infrastructure Config
+                </button>
               ) : (
                 <button
-                  onClick={() => setUserRole('official')}
+                  onClick={() => setIsOfficerAuthModalOpen(true)}
                   className="text-blue-400 hover:text-blue-300 flex items-center gap-1 cursor-pointer"
                 >
                   <Lock className="w-3 h-3" />
-                  <span>Ministry / Evaluator Login</span>
+                  <span>Ministry / Officer Login</span>
                 </button>
               )}
             </div>
@@ -207,9 +271,10 @@ export const App: React.FC = () => {
       </footer>
 
       {/* Global Modals */}
-      <PitchDeckModal
-        isOpen={isPitchDeckOpen}
-        onClose={() => setIsPitchDeckOpen(false)}
+      <OfficerAuthModal
+        isOpen={isOfficerAuthModalOpen}
+        onClose={() => setIsOfficerAuthModalOpen(false)}
+        onSuccess={handleOfficerAuthSuccess}
       />
 
       <ApiKeyModal

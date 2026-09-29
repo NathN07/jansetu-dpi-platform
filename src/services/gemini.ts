@@ -75,7 +75,6 @@ Output strict valid JSON ONLY with this exact structure:
 }
 Do NOT enclose in markdown backticks, just return raw JSON.`;
 
-      // Extract pure base64 without prefix if present
       const pureBase64 = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
 
       const response = await client.models.generateContent({
@@ -115,11 +114,11 @@ Do NOT enclose in markdown backticks, just return raw JSON.`;
         isSimulated: false
       };
     } catch (error) {
-      console.warn('Live Gemini photo analysis failed or timed out, falling back to intelligent edge inference:', error);
+      console.warn('Live Gemini photo analysis failed, falling back to edge inference:', error);
     }
   }
 
-  // High-fidelity fallback / mock when API key not yet entered
+  // Fallback / mock when API key not yet entered
   await new Promise((resolve) => setTimeout(resolve, 1400));
   
   const hints = (hintContext.title || '').toLowerCase() + ' ' + (hintContext.location || '').toLowerCase();
@@ -196,7 +195,7 @@ export async function processCitizenVoiceOrText(
 ): Promise<VoiceTextProcessResult> {
   const client = getGeminiClient();
 
-  if (client && transcript.trim().length > 5) {
+  if (client && transcript.trim().length > 3) {
     try {
       const prompt = `
 You are the Multilingual Natural Language Understanding engine of JanSetu AI, India's national Digital Public Infrastructure.
@@ -210,7 +209,7 @@ Analyze the input and return strict valid JSON ONLY with this exact structure:
   "detectedLanguage": "e.g., Hindi, Bengali, Tamil, Telugu, Marathi, Kannada, Odia, Gujarati, Punjabi, English",
   "category": "One of: Piped Water / Jal Jeevan Mission, Rural & State Roads / PMGSY, Primary Healthcare / Ayushman Bharat, School Infrastructure / Samagra Shiksha, Power & Solar / PM Surya Ghar, Sanitation & Solid Waste / Swachh Bharat, Flood & Drainage Resilience",
   "severity": "One of: Low, Medium, High, Critical",
-  "urgencyScore": 88, // integer from 0 to 100
+  "urgencyScore": 88,
   "extractedLocation": {
     "state": "State name if mentioned or implied, else null",
     "district": "District name if mentioned, else null",
@@ -243,8 +242,8 @@ Do NOT enclose in markdown backticks, just return raw JSON.`;
     }
   }
 
-  // High-fidelity fallback / mock
-  await new Promise((r) => setTimeout(r, 1000));
+  // Fallback
+  await new Promise((r) => setTimeout(r, 900));
   const lower = transcript.toLowerCase();
 
   let category: IssueCategory = 'Rural & State Roads / PMGSY';
@@ -268,13 +267,13 @@ Do NOT enclose in markdown backticks, just return raw JSON.`;
     urgency = 92;
     severity = 'Critical';
     translatedText = 'Primary health center building damaged with no operational maternity or emergency diagnostic facility for pregnant women and senior citizens.';
-  } else if (lower.includes('स्कूल') || lower.includes('school') || lower.includes('शिक्षक') || lower.includes('बच्चे') || lower.includes('school')) {
+  } else if (lower.includes('स्कूल') || lower.includes('school') || lower.includes('शिक्षक') || lower.includes('बच्चे')) {
     category = 'School Infrastructure / Samagra Shiksha';
     urgency = 82;
     severity = 'Medium';
     translatedText = 'Government school building requires urgent structural roof repairs, clean drinking water taps, and segregated sanitation blocks for female students.';
   } else {
-    translatedText = `Citizens report critical public infrastructure inadequacy requiring priority intervention under relevant national schemes: "${transcript}"`;
+    translatedText = `Citizens report critical public infrastructure inadequacy requiring priority intervention: "${transcript}"`;
   }
 
   return {
@@ -290,6 +289,119 @@ Do NOT enclose in markdown backticks, just return raw JSON.`;
     },
     sentimentIntensity: urgency > 90 ? 'Emergency' : 'Distressed',
     isSimulated: true
+  };
+}
+
+// Dynamic WhatsApp Bot AI Responder
+export async function generateWhatsAppBotReply(
+  userText: string,
+  history: { sender: 'user' | 'bot'; text: string }[]
+): Promise<{
+  replyText: string;
+  category: IssueCategory;
+  district: string;
+  state: string;
+  severity: SeverityLevel;
+  urgencyScore: number;
+}> {
+  const client = getGeminiClient();
+
+  if (client && userText.trim().length > 2) {
+    try {
+      const prompt = `
+You are the official JanSetu AI GovBot (जन-सेतु नागरिक सेवा सहायक), an empathetic, smart, and responsive government assistant on WhatsApp in India.
+Citizen's latest message: "${userText}"
+
+Context & History:
+${history.slice(-4).map((h) => `${h.sender === 'user' ? 'Citizen' : 'GovBot'}: ${h.text}`).join('\n')}
+
+Instructions:
+1. Detect the exact language used by the citizen (Hindi, Bengali, Tamil, Telugu, Marathi, Kannada, Odia, Gujarati, Punjabi, Hinglish, or English).
+2. Write a tailored, empathetic, and dynamic conversational reply in that SAME language:
+   - Acknowledge their specific issue dynamically (e.g. mention the exact problem like road pothole, drinking water pipe, hospital roof, voltage issue, garbage).
+   - Reassure them that it is logged into the national DPI demand hotspot map.
+   - Mention the relevant government scheme / ministry in their language.
+   - Keep the reply concise, warm, structured with emojis, in authentic WhatsApp style.
+3. Classify the problem into category, location (state/district if mentioned or inferred), severity, and urgency score (0-100).
+
+Output strict valid JSON ONLY with this structure:
+{
+  "replyText": "Your dynamic response text in the citizen's language",
+  "category": "One of: Piped Water / Jal Jeevan Mission, Rural & State Roads / PMGSY, Primary Healthcare / Ayushman Bharat, School Infrastructure / Samagra Shiksha, Power & Solar / PM Surya Ghar, Sanitation & Solid Waste / Swachh Bharat, Flood & Drainage Resilience",
+  "district": "Extracted district name or Bahraich",
+  "state": "Extracted state name or Uttar Pradesh",
+  "severity": "One of: Low, Medium, High, Critical",
+  "urgencyScore": 92
+}
+Do NOT include markdown backticks, return raw JSON only.`;
+
+      const response = await client.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt
+      });
+
+      const cleanJson = (response.text || '').replace(/```json/gi, '').replace(/```/g, '').trim();
+      const parsed = JSON.parse(cleanJson);
+
+      return {
+        replyText: parsed.replyText || 'आपकी समस्या दर्ज कर ली गई है।',
+        category: (parsed.category as IssueCategory) || 'Piped Water / Jal Jeevan Mission',
+        district: parsed.district || 'Bahraich',
+        state: parsed.state || 'Uttar Pradesh',
+        severity: (parsed.severity as SeverityLevel) || 'High',
+        urgencyScore: typeof parsed.urgencyScore === 'number' ? parsed.urgencyScore : 88
+      };
+    } catch (err) {
+      console.warn('Gemini WhatsApp bot fallback:', err);
+    }
+  }
+
+  // Smart conversational fallback when offline
+  await new Promise((r) => setTimeout(r, 1000));
+  const lower = userText.toLowerCase();
+
+  let replyText = `🙏 आपकी समस्या को JanSetu AI द्वारा दर्ज कर लिया गया है।\n\n📌 समस्या: "${userText}"\n⚡ हमने इसे संबंधित जिला प्रशासन और NITI Aayog डैशबोर्ड पर प्रेषित कर दिया है।\n\nजल्द ही निरीक्षण दल द्वारा स्थल जांच की जाएगी।`;
+  let category: IssueCategory = 'Rural & State Roads / PMGSY';
+  let severity: SeverityLevel = 'High';
+  let urgency = 88;
+  let dist = 'Bahraich';
+  let st = 'Uttar Pradesh';
+
+  if (lower.includes('water') || lower.includes('पानी') || lower.includes('जल') || lower.includes('pipe') || lower.includes('नल')) {
+    category = 'Piped Water / Jal Jeevan Mission';
+    severity = 'Critical';
+    urgency = 95;
+    replyText = `💧 नमस्ते! आपकी पेयजल समस्या को अति-गंभीर (Critical) श्रेणी में दर्ज किया गया है।\n\n📍 जल जीवन मिशन टीम को तुरंत सूचित किया गया है और आपातकालीन टैंकर एवं पाइपलाइन मरम्मत हेतु DPR ड्राफ्ट की जा रही है।\n\nकृपया दूषित जल का सेवन न करें।`;
+  } else if (lower.includes('road') || lower.includes('सड़क') || lower.includes('पुल') || lower.includes('bridge') || lower.includes('रास्ता')) {
+    category = 'Rural & State Roads / PMGSY';
+    severity = 'High';
+    urgency = 90;
+    st = 'Odisha';
+    dist = 'Nabarangpur';
+    replyText = `🛣️ नमस्ते! संपर्क मार्ग / पुल की क्षति संबंधी आपकी शिकायत को PMGSY एवं Gati Shakti नेशनल मास्टर प्लान कॉरिडोर में जोड़ दिया गया है।\n\nइंजीनियरिंग टीम को साइट इंस्पेक्शन का निर्देश जारी किया गया है।`;
+  } else if (lower.includes('hospital') || lower.includes('अस्पताल') || lower.includes('doctor') || lower.includes('डॉक्टर') || lower.includes('दवा') || lower.includes('மருத்துவமனை')) {
+    category = 'Primary Healthcare / Ayushman Bharat';
+    severity = 'Critical';
+    urgency = 94;
+    st = 'Jharkhand';
+    dist = 'Dumka';
+    replyText = `🏥 आपकी स्वास्थ्य केंद्र संबंधी शिकायत को प्राथमिकता पर लिया गया है।\n\nआयुष्मान भारत योजना के तहत ब्लॉक मेडिकल ऑफिसर और जिला कलेक्टर को आपातकालीन चिकित्सा व्यवस्था हेतु अलर्ट भेजा गया है।`;
+  } else if (lower.includes('school') || lower.includes('स्कूल') || lower.includes('शौचालय') || lower.includes('toilet') || lower.includes('बच्चे')) {
+    category = 'School Infrastructure / Samagra Shiksha';
+    severity = 'High';
+    urgency = 86;
+    st = 'Bihar';
+    dist = 'Bhojpur';
+    replyText = `🏫 विद्यालय अधोसंरचना व स्वच्छता संबंधी समस्या को समग्र शिक्षा अभियान के तहत दर्ज कर लिया गया है। ब्लॉक शिक्षा अधिकारी (BEO) को शीघ्र नवीनीकरण का प्रस्ताव भेजा गया है।`;
+  }
+
+  return {
+    replyText,
+    category,
+    district: dist,
+    state: st,
+    severity,
+    urgencyScore: urgency
   };
 }
 
@@ -486,7 +598,7 @@ Always format your response with clear headings, bullet points, and specific dat
     }
   }
 
-  // Intelligent fallback simulation responses based on query
+  // Fallback simulation responses based on query
   await new Promise((r) => setTimeout(r, 1200));
   const q = userQuestion.toLowerCase();
 

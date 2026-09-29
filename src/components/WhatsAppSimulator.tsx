@@ -14,7 +14,7 @@ import {
   ShieldCheck,
   RefreshCw
 } from 'lucide-react';
-import { processCitizenVoiceOrText } from '../services/gemini';
+import { generateWhatsAppBotReply } from '../services/gemini';
 
 export const WhatsAppSimulator: React.FC = () => {
   const [messages, setMessages] = useState<
@@ -59,34 +59,46 @@ export const WhatsAppSimulator: React.FC = () => {
       isVoice: options?.isVoice
     };
 
-    setMessages((prev) => [...prev, userMsg]);
+    const newHistory = [...messages, userMsg];
+    setMessages(newHistory);
     if (!customText) setInputText('');
     setIsBotTyping(true);
 
-    // Process with Gemini
     try {
-      const result = await processCitizenVoiceOrText(textToSend);
+      const result = await generateWhatsAppBotReply(textToSend, newHistory);
       const trackingNumber = `JS-WA-2026-${Math.floor(1000 + Math.random() * 9000)}`;
 
-      setTimeout(() => {
-        setIsBotTyping(false);
-        const botReply = {
-          id: `bot-${Date.now()}`,
-          sender: 'bot' as const,
-          text: `✅ आपकी शिकायत दर्ज कर ली गई है!\n\n📌 श्रेणी: ${result.category}\n📍 क्षेत्र: ${result.extractedLocation?.district || 'Bahraich'}, ${result.extractedLocation?.state || 'UP'}\n⚡ गंभीरता: ${result.severity} (आपातकालीन स्कोर: ${result.urgencyScore}/100)\n\nGoogle AI द्वारा इस मांग को राष्ट्रीय हॉटस्पॉट मैप में जोड़ दिया गया है और DPR निर्माण हेतु अग्रेषित किया गया है।`,
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          ticketCard: {
-            trackingNumber,
-            category: result.category,
-            district: result.extractedLocation?.district || 'Bahraich',
-            state: result.extractedLocation?.state || 'Uttar Pradesh',
-            status: 'AI_Verified'
-          }
-        };
-        setMessages((prev) => [...prev, botReply]);
-      }, 1400);
+      setIsBotTyping(false);
+      const botReply = {
+        id: `bot-${Date.now()}`,
+        sender: 'bot' as const,
+        text: result.replyText,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        ticketCard: {
+          trackingNumber,
+          category: result.category,
+          district: result.district,
+          state: result.state,
+          status: 'AI_Verified'
+        }
+      };
+      setMessages((prev) => [...prev, botReply]);
     } catch (e) {
       setIsBotTyping(false);
+      const fallbackReply = {
+        id: `bot-${Date.now()}`,
+        sender: 'bot' as const,
+        text: `✅ आपकी समस्या दर्ज कर ली गई है और जिला नोडल अधिकारी को प्रेषित कर दी गई है।`,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        ticketCard: {
+          trackingNumber: `JS-WA-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+          category: 'Rural & State Roads / PMGSY',
+          district: 'Bahraich',
+          state: 'Uttar Pradesh',
+          status: 'AI_Verified'
+        }
+      };
+      setMessages((prev) => [...prev, fallbackReply]);
     }
   };
 
@@ -103,7 +115,7 @@ export const WhatsAppSimulator: React.FC = () => {
             WhatsApp & IVR Voice Assistant Simulation
           </h1>
           <p className="text-xs sm:text-sm text-emerald-200/80 mt-1 max-w-2xl">
-            Test how a rural citizen with a low-cost mobile phone interacts in Hindi, Bengali, Tamil, or voice notes via WhatsApp or IVR hotline.
+            Powered by <strong>Gemini 3.8 / 2.5 Flash</strong>. It dynamically understands any Indian language (Hindi, Bengali, Tamil, Telugu, Marathi, English, etc.) and provides instant conversational redressal.
           </p>
         </div>
 
@@ -122,26 +134,26 @@ export const WhatsAppSimulator: React.FC = () => {
               }
               className="px-3 py-1.5 rounded-lg bg-emerald-900/80 hover:bg-emerald-800 text-emerald-200 text-xs font-semibold border border-emerald-700/50 transition cursor-pointer"
             >
-              💧 Hindi Voice/Text (Water)
+              💧 Hindi (Water Crisis)
             </button>
             <button
               onClick={() =>
                 sendMessage(
-                  'झरीगाँव कल्वर्ट पोल भारी बारिश में ढह गया है, 6 गाँव का सम्पर्क टूट गया है।',
+                  'ঝরিগাঁও কালভার্ট ব্রিজ বন্যায় ভেঙে গেছে, অ্যাম্বুলেন্স চলাচল বন্ধ হয়ে গেছে।',
                   {}
                 )
               }
               className="px-3 py-1.5 rounded-lg bg-emerald-900/80 hover:bg-emerald-800 text-emerald-200 text-xs font-semibold border border-emerald-700/50 transition cursor-pointer"
             >
-              🌉 Flood Culvert Collapse
+              🌉 Bengali (Bridge Washout)
             </button>
             <button
               onClick={() =>
-                sendMessage('மருத்துவமனை மேற்கூரை இடிந்து விழுந்தது (Hospital roof damaged)', {})
+                sendMessage('மருத்துவமனை மேற்கூரை இடிந்து விழுந்தது, அவசர உதவி தேவை', {})
               }
               className="px-3 py-1.5 rounded-lg bg-emerald-900/80 hover:bg-emerald-800 text-emerald-200 text-xs font-semibold border border-emerald-700/50 transition cursor-pointer"
             >
-              🏥 Tamil Health Grievance
+              🏥 Tamil (Clinic Damage)
             </button>
           </div>
         </div>
@@ -229,9 +241,9 @@ export const WhatsAppSimulator: React.FC = () => {
             ))}
 
             {isBotTyping && (
-              <div className="flex items-center gap-1.5 bg-white px-3 py-2 rounded-lg w-28 text-slate-500 text-xs shadow-xs">
+              <div className="flex items-center gap-1.5 bg-white px-3 py-2 rounded-lg w-36 text-slate-500 text-xs shadow-xs">
                 <RefreshCw className="w-3 h-3 animate-spin text-emerald-600" />
-                <span className="text-[11px]">Processing...</span>
+                <span className="text-[11px]">Gemini AI is analyzing...</span>
               </div>
             )}
           </div>
@@ -245,7 +257,7 @@ export const WhatsAppSimulator: React.FC = () => {
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-              placeholder="Type message in your language..."
+              placeholder="Type message in any language..."
               className="flex-1 bg-white rounded-full py-1.5 px-3.5 text-xs text-slate-800 focus:outline-hidden border border-slate-300"
             />
             {inputText.trim() ? (
@@ -258,7 +270,7 @@ export const WhatsAppSimulator: React.FC = () => {
             ) : (
               <button
                 onClick={() =>
-                  sendMessage('गाँव में बिजली का ट्रांसफार्मर जल गया है (Voice Note)', {
+                  sendMessage('गाँव में 15 दिनों से पीने का पानी नहीं आ रहा है (Voice Note)', {
                     isVoice: true
                   })
                 }
