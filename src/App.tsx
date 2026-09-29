@@ -8,7 +8,7 @@ import {
 } from './types';
 import { INITIAL_REQUESTS, INITIAL_DPRS, DISTRICT_METRICS } from './data/mockData';
 import { isLiveAiAvailable } from './services/gemini';
-import { Navbar } from './components/Navbar';
+import { Navbar, UserRole } from './components/Navbar';
 import { CitizenPortal } from './components/CitizenPortal';
 import { HotspotMap } from './components/HotspotMap';
 import { DprEngine } from './components/DprEngine';
@@ -17,11 +17,12 @@ import { NationalAnalytics } from './components/NationalAnalytics';
 import { PitchDeckModal } from './components/PitchDeckModal';
 import { ApiKeyModal } from './components/ApiKeyModal';
 import { StatusTracker } from './components/StatusTracker';
-import { ShieldCheck, Heart, Sparkles, Presentation } from 'lucide-react';
+import { ShieldCheck, Lock, Sparkles, Presentation } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<string>('citizen');
   const [selectedLanguage, setSelectedLanguage] = useState<LanguageCode>('hi');
+  const [userRole, setUserRole] = useState<UserRole>('official'); // Default to officer/judge mode for hackathon review, easily toggleable
   const [requests, setRequests] = useState<CitizenRequest[]>(INITIAL_REQUESTS);
   const [dprs, setDprs] = useState<DetailedProjectReport[]>(INITIAL_DPRS);
 
@@ -65,6 +66,7 @@ export const App: React.FC = () => {
   };
 
   const handleSelectDistrictForDPR = (district: DistrictMetric) => {
+    setUserRole('official');
     setPreselectedHotspot({
       district: district.name,
       state: district.state,
@@ -75,6 +77,7 @@ export const App: React.FC = () => {
   };
 
   const handleSelectRequestForDPR = (req: CitizenRequest) => {
+    setUserRole('official');
     setPreselectedHotspot({
       district: req.district,
       state: req.state,
@@ -93,6 +96,8 @@ export const App: React.FC = () => {
         selectedLanguage={selectedLanguage}
         setSelectedLanguage={setSelectedLanguage}
         isLiveAi={isLiveAi}
+        userRole={userRole}
+        setUserRole={setUserRole}
         onOpenApiKeyModal={() => setIsApiKeyModalOpen(true)}
         onOpenPitchDeck={() => setIsPitchDeckOpen(true)}
         onOpenTrackModal={() => setIsStatusTrackerOpen(true)}
@@ -110,14 +115,14 @@ export const App: React.FC = () => {
           />
         )}
 
-        {currentTab === 'map' && (
+        {currentTab === 'map' && userRole === 'official' && (
           <HotspotMap
             requests={requests}
             onSelectDistrictForDPR={handleSelectDistrictForDPR}
           />
         )}
 
-        {currentTab === 'dpr' && (
+        {currentTab === 'dpr' && userRole === 'official' && (
           <DprEngine
             dprs={dprs}
             onAddDpr={handleAddDpr}
@@ -128,7 +133,7 @@ export const App: React.FC = () => {
 
         {currentTab === 'whatsapp' && <WhatsAppSimulator />}
 
-        {currentTab === 'analytics' && <NationalAnalytics />}
+        {currentTab === 'analytics' && userRole === 'official' && <NationalAnalytics />}
       </main>
 
       {/* Indian Civic Footer */}
@@ -151,24 +156,37 @@ export const App: React.FC = () => {
 
             <div className="flex flex-wrap items-center gap-4 text-xs font-semibold">
               <button
-                onClick={() => setIsPitchDeckOpen(true)}
-                className="text-amber-400 hover:text-amber-300 flex items-center gap-1 cursor-pointer"
-              >
-                <Presentation className="w-3.5 h-3.5" />
-                <span>Pitch Deck (12 Slides)</span>
-              </button>
-              <button
                 onClick={() => setIsStatusTrackerOpen(true)}
-                className="text-slate-300 hover:text-white cursor-pointer"
+                className="text-amber-400 hover:text-amber-300 cursor-pointer"
               >
-                Track Grievance
+                Track Grievance (जन-प्रमाण)
               </button>
-              <button
-                onClick={() => setIsApiKeyModalOpen(true)}
-                className="text-slate-300 hover:text-white cursor-pointer"
-              >
-                Gemini API Config
-              </button>
+
+              {userRole === 'official' ? (
+                <>
+                  <button
+                    onClick={() => setIsPitchDeckOpen(true)}
+                    className="text-slate-300 hover:text-white flex items-center gap-1 cursor-pointer"
+                  >
+                    <Presentation className="w-3.5 h-3.5" />
+                    <span>Pitch Deck (12 Slides)</span>
+                  </button>
+                  <button
+                    onClick={() => setIsApiKeyModalOpen(true)}
+                    className="text-slate-300 hover:text-white cursor-pointer"
+                  >
+                    AI Config
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => setUserRole('official')}
+                  className="text-blue-400 hover:text-blue-300 flex items-center gap-1 cursor-pointer"
+                >
+                  <Lock className="w-3 h-3" />
+                  <span>Ministry / Evaluator Login</span>
+                </button>
+              )}
             </div>
           </div>
 
