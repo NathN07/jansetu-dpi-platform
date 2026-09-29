@@ -78,6 +78,7 @@ export const INITIAL_REQUESTS: CitizenRequest[] = [
     citizenPhoneMasked: '+91 98****2104',
     timestamp: 'Just now',
     upvotes: 412,
+    isPublished: true,
     demographicImpact: {
       populationCovered: 18500,
       aspirationalDistrict: true,
@@ -115,6 +116,7 @@ export const INITIAL_REQUESTS: CitizenRequest[] = [
     citizenPhoneMasked: '+91 98****3210',
     timestamp: '2026-09-28 09:14 AM',
     upvotes: 284,
+    isPublished: true,
     demographicImpact: {
       populationCovered: 14200,
       aspirationalDistrict: true,
@@ -153,6 +155,7 @@ export const INITIAL_REQUESTS: CitizenRequest[] = [
     citizenPhoneMasked: '+91 87****6512',
     timestamp: '2026-09-27 02:45 PM',
     upvotes: 312,
+    isPublished: true,
     demographicImpact: {
       populationCovered: 19800,
       aspirationalDistrict: true,
@@ -190,6 +193,7 @@ export const INITIAL_REQUESTS: CitizenRequest[] = [
     citizenPhoneMasked: '+91 94****9021',
     timestamp: '2026-09-26 11:20 AM',
     upvotes: 418,
+    isPublished: true,
     demographicImpact: {
       populationCovered: 22000,
       aspirationalDistrict: true,
@@ -227,6 +231,7 @@ export const INITIAL_REQUESTS: CitizenRequest[] = [
     citizenPhoneMasked: '+91 70****4489',
     timestamp: '2026-09-25 04:10 PM',
     upvotes: 560,
+    isPublished: true,
     demographicImpact: {
       populationCovered: 8500,
       aspirationalDistrict: false,
@@ -264,6 +269,7 @@ export const INITIAL_REQUESTS: CitizenRequest[] = [
     citizenPhoneMasked: '+91 97****1890',
     timestamp: '2026-09-28 01:15 PM',
     upvotes: 198,
+    isPublished: true,
     demographicImpact: {
       populationCovered: 11000,
       aspirationalDistrict: true,

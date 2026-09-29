@@ -20,7 +20,8 @@ import {
   Crosshair,
   Navigation,
   Globe,
-  Loader2
+  Loader2,
+  CheckCheck
 } from 'lucide-react';
 import L from 'leaflet';
 import { geocodeLocationPrecise, getLiveBrowserGps } from '../services/geocoding';
@@ -29,12 +30,14 @@ interface HotspotMapProps {
   requests: CitizenRequest[];
   onSelectDistrictForDPR: (district: DistrictMetric) => void;
   onSelectRequestForDPR?: (req: CitizenRequest) => void;
+  onResolveRequest?: (id: string, notes?: string, byOfficer?: boolean) => void;
 }
 
 export const HotspotMap: React.FC<HotspotMapProps> = ({
   requests,
   onSelectDistrictForDPR,
-  onSelectRequestForDPR
+  onSelectRequestForDPR,
+  onResolveRequest
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -42,13 +45,18 @@ export const HotspotMap: React.FC<HotspotMapProps> = ({
   const gpsMarkerRef = useRef<L.Marker | null>(null);
 
   const [selectedDistrict, setSelectedDistrict] = useState<DistrictMetric>(DISTRICT_METRICS[0]);
-  const [selectedCitizenIssue, setSelectedCitizenIssue] = useState<CitizenRequest | null>(requests[0] || null);
-  const [activeLayer, setActiveLayer] = useState<'all' | 'live_issues' | 'aspirational' | 'gatishakti' | 'water' | 'roads'>('all');
+  const [selectedCitizenIssue, setSelectedCitizenIssue] = useState<CitizenRequest | null>(
+    requests.find((r) => r.isPublished && !r.isResolved) || requests[0] || null
+  );
+  const [activeLayer, setActiveLayer] = useState<'all' | 'live_issues' | 'aspirational' | 'gatishakti' | 'water' | 'roads' | 'resolved'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchingLocation, setIsSearchingLocation] = useState(false);
   const [isGettingGps, setIsGettingGps] = useState(false);
-  const [userGpsLocation, setUserGpsLocation] = useState<[number, number] | null>(null);
   const prevRequestsLengthRef = useRef(requests.length);
+
+  // Active vs Resolved Requests
+  const activeUnresolvedRequests = requests.filter((r) => (r.isPublished ?? true) && !r.isResolved);
+  const resolvedRequestsList = requests.filter((r) => r.isResolved);
 
   // Initialize Leaflet Map
   useEffect(() => {
@@ -96,14 +104,21 @@ export const HotspotMap: React.FC<HotspotMapProps> = ({
 
     markersRef.current.clearLayers();
 
-    // 1. Render Live Individual Citizen Grievances / Distress Hotspots with sharp pinpoint drop-pins
-    if (activeLayer === 'all' || activeLayer === 'live_issues' || activeLayer === 'water' || activeLayer === 'roads') {
-      requests.forEach((req) => {
+    // Determine which requests to plot based on active layer
+    const reqsToPlot = activeLayer === 'resolved' 
+      ? resolvedRequestsList 
+      : activeUnresolvedRequests;
+
+    // 1. Render Citizen Grievances with high precision drop-pins (Resolved = Emerald Green, Active = Category Color)
+    if (activeLayer === 'all' || activeLayer === 'live_issues' || activeLayer === 'water' || activeLayer === 'roads' || activeLayer === 'resolved') {
+      reqsToPlot.forEach((req) => {
         if (activeLayer === 'water' && !req.category.includes('Water')) return;
         if (activeLayer === 'roads' && !req.category.includes('Roads')) return;
 
         const isReqSelected = selectedCitizenIssue?.id === req.id;
-        const iconEmoji = req.category.includes('Water')
+        const iconEmoji = req.isResolved
+          ? '✅'
+          : req.category.includes('Water')
           ? '💧'
           : req.category.includes('Roads')
           ? '🛣️'
@@ -115,10 +130,17 @@ export const HotspotMap: React.FC<HotspotMapProps> = ({
           ? '⚡'
           : '🚨';
 
-        const pinColor = req.severity === 'Critical' ? '#ef4444' : req.category.includes('Water') ? '#0284c7' : '#ea580c';
+        const pinColor = req.isResolved 
+          ? '#10b981' 
+          : req.severity === 'Critical' 
+          ? '#ef4444' 
+          : req.category.includes('Water') 
+          ? '#0284c7' 
+          : '#ea580c';
+
         const pinSize = isReqSelected ? 46 : 38;
 
-        // Custom High-Precision SVG Teardrop Pin with sharp bottom tip & ground pulse
+        // Custom High-Precision SVG Teardrop Pin with sharp needle tip & ground pulse
         const issueHtml = `
           <div style="position: relative; width: ${pinSize}px; height: ${pinSize + 10}px; display: flex; flex-direction: column; align-items: center; cursor: pointer;">
             <!-- Radar Ripple on ground point -->
@@ -162,7 +184,6 @@ export const HotspotMap: React.FC<HotspotMapProps> = ({
               justify-content: center;
               box-shadow: 0 4px 14px rgba(0,0,0,0.45);
               border: ${isReqSelected ? '3px solid #ffffff' : '2px solid #ffffff'};
-              transition: transform 0.2s ease;
             ">
               <div style="
                 transform: rotate(45deg);
@@ -195,7 +216,11 @@ export const HotspotMap: React.FC<HotspotMapProps> = ({
             <div style="font-weight: 800; color: #002663; font-size: 13px;">${req.title}</div>
             <div style="color: #475569; font-size: 11px; margin-top: 2px;">📍 ${req.blockOrWard || req.district}, ${req.state}</div>
             <div style="color: #64748b; font-size: 10px; font-family: monospace;">🌐 Lat: ${req.coordinates[0].toFixed(4)}°, Lng: ${req.coordinates[1].toFixed(4)}°</div>
-            <div style="color: #ef4444; font-weight: 700; margin-top: 4px;">⚡ Priority Score: ${req.urgencyScore}/100 (${req.severity})</div>
+            ${req.isResolved ? `
+              <div style="color: #059669; font-weight: 800; margin-top: 4px;">✅ RESOLVED & COMPLETED</div>
+            ` : `
+              <div style="color: #ef4444; font-weight: 700; margin-top: 4px;">⚡ Priority: ${req.urgencyScore}/100 (${req.severity})</div>
+            `}
             <div style="color: #15803d; font-size: 10px; font-weight: 600; margin-top: 2px;">Token: ${req.trackingNumber}</div>
           </div>
         `, {
@@ -207,8 +232,8 @@ export const HotspotMap: React.FC<HotspotMapProps> = ({
       });
     }
 
-    // 2. Render District Metrics Aggregate Pins
-    if (activeLayer !== 'live_issues') {
+    // 2. Render District Metrics Aggregate Pins (only on non-resolved views)
+    if (activeLayer !== 'live_issues' && activeLayer !== 'resolved') {
       DISTRICT_METRICS.forEach((dist) => {
         if (activeLayer === 'aspirational' && !dist.isAspirational) return;
         if (activeLayer === 'gatishakti' && dist.gatiShaktiGapScore < 80) return;
@@ -311,7 +336,6 @@ export const HotspotMap: React.FC<HotspotMapProps> = ({
     setIsGettingGps(true);
     try {
       const gps = await getLiveBrowserGps();
-      setUserGpsLocation(gps.coordinates);
 
       if (mapInstanceRef.current) {
         mapInstanceRef.current.flyTo(gps.coordinates, 15, { duration: 1.5 });
@@ -356,25 +380,23 @@ export const HotspotMap: React.FC<HotspotMapProps> = ({
             National Infrastructure Demand Hotspots
           </h1>
           <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-2xl">
-            Live sub-meter precision pinning across all 28 States & UTs. Grievances submitted via WhatsApp or Citizen Portal pin immediately to the exact street/town coordinates.
+            Live sub-meter precision pinning. Active verified community issues appear immediately on the map; resolved works are archived to clear map clutter.
           </p>
         </div>
 
         {/* Real-time stats widgets */}
         <div className="flex flex-wrap gap-3">
           <div className="bg-slate-800/80 px-3.5 py-2.5 rounded-xl border border-slate-700/60">
-            <span className="text-[10px] text-slate-400 font-semibold block uppercase">Live Logged Issues</span>
-            <span className="text-lg font-black text-rose-400">{requests.length} Pins</span>
+            <span className="text-[10px] text-slate-400 font-semibold block uppercase">Active Hotspots</span>
+            <span className="text-lg font-black text-rose-400">{activeUnresolvedRequests.length} Pins</span>
+          </div>
+          <div className="bg-slate-800/80 px-3.5 py-2.5 rounded-xl border border-slate-700/60">
+            <span className="text-[10px] text-slate-400 font-semibold block uppercase">Resolved Works</span>
+            <span className="text-lg font-black text-emerald-400">{resolvedRequestsList.length} Fixed</span>
           </div>
           <div className="bg-slate-800/80 px-3.5 py-2.5 rounded-xl border border-slate-700/60">
             <span className="text-[10px] text-slate-400 font-semibold block uppercase">All States Tracked</span>
             <span className="text-lg font-black text-amber-400">28 States + 8 UTs</span>
-          </div>
-          <div className="bg-slate-800/80 px-3.5 py-2.5 rounded-xl border border-slate-700/60">
-            <span className="text-[10px] text-slate-400 font-semibold block uppercase">Precision Mode</span>
-            <span className="text-lg font-black text-emerald-400 flex items-center gap-1">
-              <Crosshair className="w-4 h-4 text-emerald-400" /> GPS Locked
-            </span>
           </div>
         </div>
       </div>
@@ -394,7 +416,7 @@ export const HotspotMap: React.FC<HotspotMapProps> = ({
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
-            All Pins ({DISTRICT_METRICS.length + requests.length})
+            Active Hotspots ({DISTRICT_METRICS.length + activeUnresolvedRequests.length})
           </button>
           <button
             onClick={() => setActiveLayer('live_issues')}
@@ -405,7 +427,7 @@ export const HotspotMap: React.FC<HotspotMapProps> = ({
             }`}
           >
             <Flame className="w-3.5 h-3.5" />
-            <span>Live Issues ({requests.length})</span>
+            <span>Active Citizen Pins ({activeUnresolvedRequests.length})</span>
           </button>
           <button
             onClick={() => setActiveLayer('aspirational')}
@@ -436,6 +458,17 @@ export const HotspotMap: React.FC<HotspotMapProps> = ({
             }`}
           >
             🛣️ PMGSY Roads
+          </button>
+          <button
+            onClick={() => setActiveLayer('resolved')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
+              activeLayer === 'resolved'
+                ? 'bg-emerald-700 text-white shadow-xs'
+                : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-300'
+            }`}
+          >
+            <CheckCheck className="w-3.5 h-3.5" />
+            <span>Resolved Works ({resolvedRequestsList.length})</span>
           </button>
         </div>
 
@@ -498,7 +531,11 @@ export const HotspotMap: React.FC<HotspotMapProps> = ({
             <span className="font-bold text-slate-800 block">Live Map Legend</span>
             <div className="flex items-center gap-2">
               <span className="w-3.5 h-3.5 rounded-full bg-rose-500 border-2 border-white shadow-xs"></span>
-              <span className="text-slate-700 font-semibold">Live Citizen Issue Drop-Pin</span>
+              <span className="text-slate-700 font-semibold">Active Citizen Issue Drop-Pin</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white shadow-xs"></span>
+              <span className="text-slate-700 font-semibold">Resolved / Completed Work</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="w-3 h-3 rounded-full border-2 border-yellow-400 bg-amber-500"></span>
@@ -521,9 +558,15 @@ export const HotspotMap: React.FC<HotspotMapProps> = ({
                   <span className="text-xs font-mono font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                     {selectedCitizenIssue.trackingNumber}
                   </span>
-                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-800 border border-rose-200">
-                    {selectedCitizenIssue.severity} Priority ({selectedCitizenIssue.urgencyScore}/100)
-                  </span>
+                  {selectedCitizenIssue.isResolved ? (
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                      <CheckCheck className="w-3 h-3" /> Resolved
+                    </span>
+                  ) : (
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-800 border border-rose-200">
+                      {selectedCitizenIssue.severity} Priority ({selectedCitizenIssue.urgencyScore}/100)
+                    </span>
+                  )}
                 </div>
                 <h3 className="text-base font-extrabold text-slate-900 mt-2 leading-snug">
                   {selectedCitizenIssue.title}
@@ -543,40 +586,75 @@ export const HotspotMap: React.FC<HotspotMapProps> = ({
                 </div>
               </div>
 
-              {/* Description & AI Verification */}
+              {/* Description & AI Verification / Resolution Note */}
               <div className="space-y-3 text-xs">
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-slate-700">
                   <span className="font-bold text-slate-900 block mb-1">Reported Grievance:</span>
                   <p className="line-clamp-3 leading-relaxed">{selectedCitizenIssue.description}</p>
                 </div>
 
-                <div className="p-3.5 bg-blue-50/70 rounded-xl border border-blue-100 text-blue-900 space-y-1">
-                  <span className="font-bold text-[10px] uppercase block text-blue-950">
-                    Google AI Forensic Verification:
-                  </span>
-                  <p className="text-xs font-semibold">
-                    {selectedCitizenIssue.aiVerification?.detectedDefect || 'Structural civil defect confirmed.'}
-                  </p>
-                  <div className="flex justify-between text-[10px] text-blue-700 pt-1">
-                    <span>Hazard Index: {selectedCitizenIssue.aiVerification?.hazardIndex || 8.9}/10</span>
-                    <span>Confidence: 98%</span>
+                {selectedCitizenIssue.isResolved ? (
+                  <div className="p-3.5 bg-emerald-50 rounded-xl border border-emerald-200 text-emerald-900 space-y-1">
+                    <span className="font-bold text-[10px] uppercase block text-emerald-950">
+                      ✅ Civil Resolution Verified & Logged:
+                    </span>
+                    <p className="text-xs font-semibold">
+                      {selectedCitizenIssue.resolutionNotes || 'Civil infrastructure repair verified and completed.'}
+                    </p>
+                    <div className="flex justify-between text-[10px] text-emerald-700 pt-1">
+                      <span>Authority: {selectedCitizenIssue.resolvedBy || 'Officer Sanction'}</span>
+                      <span>{selectedCitizenIssue.resolvedAt || 'Completed'}</span>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="p-3.5 bg-blue-50/70 rounded-xl border border-blue-100 text-blue-900 space-y-1">
+                    <span className="font-bold text-[10px] uppercase block text-blue-950">
+                      Google AI Forensic Verification:
+                    </span>
+                    <p className="text-xs font-semibold">
+                      {selectedCitizenIssue.aiVerification?.detectedDefect || 'Structural civil defect confirmed.'}
+                    </p>
+                    <div className="flex justify-between text-[10px] text-blue-700 pt-1">
+                      <span>Hazard Index: {selectedCitizenIssue.aiVerification?.hazardIndex || 8.9}/10</span>
+                      <span>Confidence: 98%</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {/* Action CTA: Generate Autonomous DPR */}
-              <button
-                type="button"
-                onClick={() => {
-                  if (onSelectRequestForDPR) {
-                    onSelectRequestForDPR(selectedCitizenIssue);
-                  }
-                }}
-                className="w-full py-3 px-4 rounded-xl font-extrabold text-xs text-white bg-gradient-to-r from-indigo-600 to-blue-700 hover:from-indigo-700 hover:to-blue-800 shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <Sparkles className="w-4 h-4 text-amber-300" />
-                <span>Draft Autonomous DPR for this Issue</span>
-              </button>
+              {/* Action Buttons: Mark as Resolved & Draft Autonomous DPR */}
+              <div className="space-y-2">
+                {!selectedCitizenIssue.isResolved && onResolveRequest && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const note = prompt('Enter official completion remarks:', 'Civil infrastructure repair verified and completed.');
+                      if (note !== null) {
+                        onResolveRequest(selectedCitizenIssue.id, note, true);
+                      }
+                    }}
+                    className="w-full py-2.5 px-4 rounded-xl font-bold text-xs text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm transition flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <CheckCheck className="w-4 h-4" />
+                    <span>Mark this Issue as Resolved (काम पूरा हुआ)</span>
+                  </button>
+                )}
+
+                {!selectedCitizenIssue.isResolved && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onSelectRequestForDPR) {
+                        onSelectRequestForDPR(selectedCitizenIssue);
+                      }
+                    }}
+                    className="w-full py-3 px-4 rounded-xl font-extrabold text-xs text-white bg-gradient-to-r from-indigo-600 to-blue-700 hover:from-indigo-700 hover:to-blue-800 shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Sparkles className="w-4 h-4 text-amber-300" />
+                    <span>Draft Autonomous DPR for this Issue</span>
+                  </button>
+                )}
+              </div>
             </>
           ) : (
             <div className="text-center py-6 text-slate-400">
@@ -588,10 +666,10 @@ export const HotspotMap: React.FC<HotspotMapProps> = ({
           {/* Quick Hotspot / Issue Switcher List */}
           <div className="pt-2 border-t border-slate-100">
             <span className="text-[11px] font-bold text-slate-500 block mb-2">
-              Recently Logged Pins on Map ({requests.length}):
+              {activeLayer === 'resolved' ? 'Resolved Works Archive' : 'Active Pins on Map'} ({activeLayer === 'resolved' ? resolvedRequestsList.length : activeUnresolvedRequests.length}):
             </span>
             <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-              {requests.slice(0, 10).map((r) => (
+              {(activeLayer === 'resolved' ? resolvedRequestsList : activeUnresolvedRequests).slice(0, 10).map((r) => (
                 <button
                   key={r.id}
                   onClick={() => {
@@ -606,7 +684,9 @@ export const HotspotMap: React.FC<HotspotMapProps> = ({
                 >
                   <div className="flex justify-between items-center text-[10px]">
                     <span className="font-mono text-slate-500">{r.trackingNumber}</span>
-                    <span className="font-bold text-rose-600">{r.severity}</span>
+                    <span className={`font-bold ${r.isResolved ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      {r.isResolved ? 'Resolved' : r.severity}
+                    </span>
                   </div>
                   <div className="truncate font-semibold mt-0.5">{r.district}, {r.state}</div>
                   <div className="text-[10px] font-mono text-slate-500 mt-0.5">

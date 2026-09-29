@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { CitizenRequest, IssueCategory, LanguageCode, SeverityLevel } from '../types';
+import { CitizenRequest, IssueCategory, LanguageCode, SeverityLevel, RequestStatus } from '../types';
 import { ALL_INDIAN_STATES, resolveLocationCoordinates } from '../data/mockData';
 import { geocodeLocationPrecise, getLiveBrowserGps } from '../services/geocoding';
 import { 
@@ -21,7 +21,12 @@ import {
   ShieldCheck,
   RefreshCw,
   Crosshair,
-  Loader2
+  Loader2,
+  Users,
+  CheckCheck,
+  PlusCircle,
+  HelpCircle,
+  Zap
 } from 'lucide-react';
 import { analyzeInfrastructurePhoto, processCitizenVoiceOrText } from '../services/gemini';
 import confetti from 'canvas-confetti';
@@ -30,6 +35,10 @@ interface CitizenPortalProps {
   requests: CitizenRequest[];
   onAddRequest: (req: CitizenRequest) => void;
   onUpvoteRequest: (id: string) => void;
+  onResolveRequest?: (id: string, notes?: string, byOfficer?: boolean) => void;
+  onConfirmResolution?: (id: string) => void;
+  onFastTrackApprove?: (id: string) => void;
+  userRole?: 'citizen' | 'official';
   selectedLanguage: LanguageCode;
   onSelectRequestForDPR: (req: CitizenRequest) => void;
 }
@@ -38,6 +47,10 @@ export const CitizenPortal: React.FC<CitizenPortalProps> = ({
   requests,
   onAddRequest,
   onUpvoteRequest,
+  onResolveRequest,
+  onConfirmResolution,
+  onFastTrackApprove,
+  userRole = 'citizen',
   selectedLanguage,
   onSelectRequestForDPR
 }) => {
@@ -60,6 +73,7 @@ export const CitizenPortal: React.FC<CitizenPortalProps> = ({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState<IssueCategory>('Piped Water / Jal Jeevan Mission');
+  const [customCategoryName, setCustomCategoryName] = useState('');
   const [stateName, setStateName] = useState('Uttar Pradesh');
   const [district, setDistrict] = useState('Bahraich');
   const [blockOrWard, setBlockOrWard] = useState('Nanpara Block');
@@ -74,8 +88,10 @@ export const CitizenPortal: React.FC<CitizenPortalProps> = ({
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiAnalysisPreview, setAiAnalysisPreview] = useState<any>(null);
   const [lastSubmittedToken, setLastSubmittedToken] = useState<string | null>(null);
+  const [lastSubmittedIsReview, setLastSubmittedIsReview] = useState(false);
 
-  // Filter state for feed
+  // Feed Tab: 'published' | 'review_queue' | 'resolved'
+  const [feedTab, setFeedTab] = useState<'published' | 'review_queue' | 'resolved'>('published');
   const [selectedFilterCategory, setSelectedFilterCategory] = useState<string>('all');
 
   // Voice recording handler
@@ -184,20 +200,26 @@ export const CitizenPortal: React.FC<CitizenPortalProps> = ({
 
     setPhotoMime(file.type || 'image/jpeg');
     const reader = new FileReader();
-    reader.onload = async () => {
-      const base64 = reader.result as string;
+    reader.onload = async (event) => {
+      const base64 = event.target?.result as string;
       setPhotoPreview(base64);
-      // Auto analyze with Gemini Vision!
       setIsAnalyzing(true);
       try {
-        const analysis = await analyzeInfrastructurePhoto(base64, file.type, {
-          title: title || 'Infrastructure Failure',
-          location: `${district}, ${stateName}`
+        const photoResult = await analyzeInfrastructurePhoto(base64, file.type, {
+          location: `${district}, ${stateName}`,
+          title: title || 'Reported damage'
         });
-        setAiAnalysisPreview(analysis);
-        setCategory(analysis.category);
-        if (!title) setTitle(analysis.suggestedTitle);
-        setDescription((prev) => prev ? `${prev}\n\n[Vision AI Analysis: ${analysis.detectedDefect}]` : analysis.detectedDefect);
+        setCategory(photoResult.category);
+        if (!title) setTitle(photoResult.suggestedTitle);
+        setAiAnalysisPreview({
+          verified: photoResult.verified,
+          confidence: photoResult.confidence,
+          detectedDefect: photoResult.detectedDefect,
+          hazardIndex: photoResult.hazardIndex,
+          recommendedMinistry: photoResult.recommendedMinistry,
+          severity: photoResult.severity,
+          notes: photoResult.notes
+        });
       } catch (err) {
         console.error(err);
       } finally {
@@ -301,13 +323,17 @@ export const CitizenPortal: React.FC<CitizenPortalProps> = ({
     }
   };
 
-  // Submit Final Request
+  // Submit Final Request (Lodges into Community Review Pipeline)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !description.trim()) {
       alert('Please provide a title and description or use voice/preset.');
       return;
     }
+
+    const effectiveCategory = category === 'Other / Custom Infrastructure Issue'
+      ? (customCategoryName.trim() || 'General Public Infrastructure')
+      : category;
 
     const stateCodes: Record<string, string> = {
       'Uttar Pradesh': 'UP',
@@ -326,6 +352,7 @@ export const CitizenPortal: React.FC<CitizenPortalProps> = ({
     // Resolve high-precision coordinates
     const finalCoords = customCoords || (await geocodeLocationPrecise(blockOrWard, district, stateName, pinCode));
 
+    // New submissions start in Community Review to keep feed uncluttered and spam-proof
     const newRequest: CitizenRequest = {
       id: `req-${Date.now()}`,
       trackingNumber: trackingNum,
@@ -333,13 +360,14 @@ export const CitizenPortal: React.FC<CitizenPortalProps> = ({
       description,
       originalLanguage: selectedLanguage,
       translatedDescription: aiAnalysisPreview?.translatedText || description,
-      category,
+      category: effectiveCategory,
+      customCategoryName: customCategoryName || undefined,
       state: stateName,
       district,
       blockOrWard,
       pinCode,
       coordinates: finalCoords,
-      status: 'AI_Verified',
+      status: 'Pending_Community_Review',
       severity: (aiAnalysisPreview?.severity as SeverityLevel) || 'High',
       urgencyScore: aiAnalysisPreview?.urgencyScore || 88,
       inputChannel: activeMode === 'voice' ? 'voice' : activeMode === 'photo' ? 'photo' : 'web_portal',
@@ -347,7 +375,11 @@ export const CitizenPortal: React.FC<CitizenPortalProps> = ({
       citizenName: citizenName || 'Anonymous Citizen',
       citizenPhoneMasked: phone ? phone.replace(/(\d{2})\d{4}(\d{4})/, '$1****$2') : '+91 98****1234',
       timestamp: 'Just now',
-      upvotes: 1,
+      upvotes: 1, // Author's endorsement
+      endorsementsNeeded: 3, // Requires 3 neighborhood endorsements to publish to live map
+      isPublished: false,
+      isResolved: false,
+      resolutionLikes: 0,
       demographicImpact: {
         populationCovered: Math.floor(8000 + Math.random() * 15000),
         aspirationalDistrict: true,
@@ -367,6 +399,7 @@ export const CitizenPortal: React.FC<CitizenPortalProps> = ({
 
     onAddRequest(newRequest);
     setLastSubmittedToken(trackingNum);
+    setLastSubmittedIsReview(true);
 
     // Trigger celebration confetti
     try {
@@ -384,6 +417,7 @@ export const CitizenPortal: React.FC<CitizenPortalProps> = ({
     setPhotoPreview(null);
     setAiAnalysisPreview(null);
     setCustomCoords(null);
+    setCustomCategoryName('');
   };
 
   // Text to Speech playback
@@ -397,7 +431,18 @@ export const CitizenPortal: React.FC<CitizenPortalProps> = ({
     }
   };
 
-  const filteredRequests = requests.filter((r) => {
+  // Categorize requests into Published, Review Queue, and Resolved
+  const publishedRequests = requests.filter((r) => r.isPublished && !r.isResolved);
+  const reviewQueueRequests = requests.filter((r) => !r.isPublished && !r.isResolved);
+  const resolvedRequests = requests.filter((r) => r.isResolved);
+
+  const displayedRequests = (
+    feedTab === 'published'
+      ? publishedRequests
+      : feedTab === 'review_queue'
+      ? reviewQueueRequests
+      : resolvedRequests
+  ).filter((r) => {
     if (selectedFilterCategory === 'all') return true;
     return r.category.toLowerCase().includes(selectedFilterCategory.toLowerCase());
   });
@@ -418,7 +463,7 @@ export const CitizenPortal: React.FC<CitizenPortalProps> = ({
             Jan-Vani <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-300">(जन-वाणी)</span>
           </h1>
           <p className="text-base sm:text-lg text-slate-300 leading-relaxed mb-6">
-            Submit your community infrastructure demands in your native language via <strong>Voice</strong>, <strong>Photos</strong>, or <strong>WhatsApp</strong>. Google AI automatically extracts urgency, verifies damage severity, and turns your voice into official government Detailed Project Reports (DPR).
+            Lodge community infrastructure demands in any language via <strong>Voice</strong>, <strong>Photos</strong>, or <strong>WhatsApp</strong>. Community endorsements verify true local priorities, and Google AI turns collective citizen voices into official Detailed Project Reports (DPR).
           </p>
 
           {/* Quick Preset Buttons for Hackathon Demo */}
@@ -461,25 +506,28 @@ export const CitizenPortal: React.FC<CitizenPortalProps> = ({
         </div>
       </div>
 
-      {/* Success Notification Banner when last request was submitted */}
+      {/* Community Review Notice Banner */}
       {lastSubmittedToken && (
-        <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between shadow-xs">
-          <div className="flex items-center gap-3">
-            <CheckCircle2 className="w-6 h-6 text-emerald-600 shrink-0" />
+        <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-start gap-3">
+            <Users className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
             <div>
-              <p className="text-sm font-bold text-emerald-900">
-                Grievance Successfully Registered as Digital Public Good!
+              <p className="text-sm font-bold text-amber-950">
+                Grievance Lodged into Neighborhood Community Review! (Token: {lastSubmittedToken})
               </p>
-              <p className="text-xs text-emerald-700">
-                DPI Token: <span className="font-mono font-bold bg-emerald-100 px-1.5 py-0.5 rounded text-emerald-900">{lastSubmittedToken}</span> — Clustered into National Hotspot Map & Policy Decision Matrix.
+              <p className="text-xs text-amber-800 mt-0.5">
+                To prevent spam and keep the public feed high quality, your issue needs <strong>3 citizen endorsements/likes</strong> in the "Community Review Queue". Once endorsed, it will be automatically published on the National Hotspot Map for Officer DPR allocation!
               </p>
             </div>
           </div>
           <button
-            onClick={() => setLastSubmittedToken(null)}
-            className="text-xs text-emerald-800 hover:text-emerald-950 font-semibold px-2 py-1 rounded bg-emerald-100"
+            onClick={() => {
+              setLastSubmittedToken(null);
+              setFeedTab('review_queue');
+            }}
+            className="text-xs text-amber-900 hover:text-amber-950 font-bold px-3 py-1.5 rounded-lg bg-amber-200 hover:bg-amber-300 transition cursor-pointer shrink-0"
           >
-            Dismiss
+            View in Review Queue
           </button>
         </div>
       )}
@@ -491,8 +539,8 @@ export const CitizenPortal: React.FC<CitizenPortalProps> = ({
           {/* Mode Switcher Tabs */}
           <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
             <div>
-              <h2 className="text-lg font-bold text-slate-900">Submit Infrastructure Demand</h2>
-              <p className="text-xs text-slate-500">Pick your preferred input modality below</p>
+              <h2 className="text-lg font-bold text-slate-900">Lodge Infrastructure Grievance</h2>
+              <p className="text-xs text-slate-500">Multimodal AI input • Citizen moderation enabled</p>
             </div>
             <div className="flex p-1 bg-slate-100 rounded-xl">
               <button
@@ -518,7 +566,7 @@ export const CitizenPortal: React.FC<CitizenPortalProps> = ({
                 }`}
               >
                 <Camera className="w-3.5 h-3.5" />
-                <span>Vision & Photo</span>
+                <span>Photo AI</span>
               </button>
 
               <button
@@ -530,84 +578,67 @@ export const CitizenPortal: React.FC<CitizenPortalProps> = ({
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <Send className="w-3.5 h-3.5" />
-                <span>Text Form</span>
+                <Upload className="w-3.5 h-3.5" />
+                <span>Direct Form</span>
               </button>
             </div>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Mode 1: Voice Recorder View */}
+            {/* Mode 1: Voice Recording View */}
             {activeMode === 'voice' && (
               <div className="p-5 rounded-2xl bg-orange-50/60 border border-orange-200/80 space-y-4">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-orange-500"></span>
-                    <span className="text-xs font-bold text-orange-950 uppercase tracking-wide">
-                      Vernacular Speech Ingestion (Any Indian Language)
-                    </span>
-                  </div>
-                  {isRecording && (
-                    <div className="flex items-center gap-2 text-xs font-mono text-rose-600 font-bold">
-                      <span className="w-2 h-2 rounded-full bg-rose-600 animate-ping"></span>
-                      <span>Recording: {recordingSeconds}s</span>
-                    </div>
-                  )}
+                  <span className="text-xs font-bold text-orange-950 uppercase tracking-wide flex items-center gap-1.5">
+                    <Volume2 className="w-3.5 h-3.5 text-orange-600" />
+                    Indian Linguistic Voice-to-DPR Engine
+                  </span>
+                  <span className="text-[11px] text-orange-700 font-medium">
+                    Speaks in Hindi, Bengali, Tamil, Telugu, Marathi, etc.
+                  </span>
                 </div>
 
-                {/* Big Mic Button & Audio Visualizer */}
-                <div className="flex flex-col items-center justify-center py-4">
+                <div className="flex flex-col sm:flex-row items-center gap-4 bg-white p-4 rounded-xl border border-orange-100">
                   <button
                     type="button"
                     onClick={isRecording ? stopRecording : startRecording}
-                    className={`relative w-20 h-20 rounded-full flex items-center justify-center transition-all duration-300 shadow-lg cursor-pointer ${
+                    className={`w-16 h-16 rounded-full flex items-center justify-center transition shadow-lg cursor-pointer ${
                       isRecording
-                        ? 'bg-rose-600 text-white ring-8 ring-rose-200 animate-pulse'
-                        : 'bg-gradient-to-tr from-orange-500 to-amber-500 text-white hover:from-orange-600 hover:to-amber-600 hover:scale-105'
+                        ? 'bg-rose-600 text-white animate-pulse'
+                        : 'bg-gradient-to-tr from-orange-600 to-amber-500 hover:from-orange-700 hover:to-amber-600 text-white'
                     }`}
                   >
                     {isRecording ? <MicOff className="w-8 h-8" /> : <Mic className="w-8 h-8" />}
                   </button>
-                  <p className="mt-3 text-xs font-semibold text-slate-700">
-                    {isRecording ? 'Click to Stop & Transcribe' : 'Tap to Speak in Hindi, Bengali, Tamil, etc.'}
-                  </p>
+
+                  <div className="flex-1 text-center sm:text-left">
+                    <p className="text-sm font-bold text-slate-800">
+                      {isRecording ? `Recording... (${recordingSeconds}s)` : 'Tap mic and speak your grievance'}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Example: "আমাদের রানাঘাটের ১ নং ব্লকের কালভার্ট ব্রিজ ভেঙে গেছে, গাড়ি চলাচল বন্ধ।"
+                    </p>
+                  </div>
                 </div>
 
-                {/* Transcript Display */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Live Speech Transcription:
-                  </label>
-                  <div className="relative">
-                    <textarea
-                      value={voiceTranscript}
-                      onChange={(e) => {
-                        setVoiceTranscript(e.target.value);
-                        setDescription(e.target.value);
-                      }}
-                      placeholder="Your spoken words will appear here in real-time... (Or type your native language text here)"
-                      rows={3}
-                      className="w-full text-sm rounded-xl border border-orange-200 p-3 bg-white focus:outline-hidden focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
-                    ></textarea>
-                  </div>
-                  {voiceTranscript && (
-                    <div className="mt-2 flex justify-end">
-                      <button
-                        type="button"
-                        onClick={handleAnalyzeVoiceTranscript}
-                        disabled={isAnalyzing}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-600 text-white text-xs font-bold hover:bg-orange-700 transition cursor-pointer disabled:opacity-50"
-                      >
-                        {isAnalyzing ? (
-                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                        )}
-                        <span>Process with Gemini AI</span>
-                      </button>
+                {voiceTranscript && (
+                  <div className="space-y-2">
+                    <div className="p-3 bg-white rounded-xl border border-orange-200 text-xs text-slate-800">
+                      <span className="font-bold text-orange-900 block mb-1">Live Transcript:</span>
+                      <p className="italic">{voiceTranscript}</p>
                     </div>
-                  )}
-                </div>
+
+                    <button
+                      type="button"
+                      onClick={handleAnalyzeVoiceTranscript}
+                      disabled={isAnalyzing}
+                      className="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-xs"
+                    >
+                      {isAnalyzing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                      <span>Extract Urgency & Fill Form via Gemini AI</span>
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -617,7 +648,7 @@ export const CitizenPortal: React.FC<CitizenPortalProps> = ({
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-blue-950 uppercase tracking-wide flex items-center gap-1.5">
                     <Camera className="w-3.5 h-3.5 text-blue-600" />
-                    Gemini 3.8 Multimodal Vision Inspector
+                    Gemini Multimodal Vision Inspector
                   </span>
                   <span className="text-[11px] text-blue-700 font-medium">
                     Auto-detects defect, severity & hazard
@@ -741,70 +772,101 @@ export const CitizenPortal: React.FC<CitizenPortalProps> = ({
                 />
               </div>
 
+              {/* Dynamic Extensible Issue Category Selector */}
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-slate-700">
+                  Infrastructure Sector / Scheme:
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <select
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    className="w-full text-sm rounded-xl border border-slate-300 p-2.5 bg-white focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
+                  >
+                    <option value="Piped Water / Jal Jeevan Mission">💧 Piped Water / Jal Jeevan Mission</option>
+                    <option value="Rural & State Roads / PMGSY">🛣️ Rural & State Roads / PMGSY</option>
+                    <option value="Primary Healthcare / Ayushman Bharat">🏥 Primary Healthcare / Ayushman Bharat</option>
+                    <option value="School Infrastructure / Samagra Shiksha">🏫 School Infrastructure / Samagra Shiksha</option>
+                    <option value="Power & Solar / PM Surya Ghar">⚡ Power & Solar / PM Surya Ghar</option>
+                    <option value="Sanitation & Solid Waste / Swachh Bharat">🚯 Sanitation & Solid Waste / Swachh Bharat</option>
+                    <option value="Flood & Drainage Resilience">🌊 Flood & Drainage Resilience</option>
+                    <option value="Street Lighting & Public Safety">💡 Street Lighting & Public Safety</option>
+                    <option value="Public Transport & Connectivity">🚌 Public Transport & Connectivity</option>
+                    <option value="Irrigation & Agriculture">🌾 Irrigation & Agriculture</option>
+                    <option value="Digital & Telecom Connectivity">📶 Digital & Telecom Connectivity</option>
+                    <option value="Other / Custom Infrastructure Issue">➕ Other / Custom Infrastructure Issue</option>
+                  </select>
+
+                  {/* Custom Category Input if 'Other' selected */}
+                  {category === 'Other / Custom Infrastructure Issue' ? (
+                    <input
+                      type="text"
+                      value={customCategoryName}
+                      onChange={(e) => setCustomCategoryName(e.target.value)}
+                      placeholder="Specify custom issue type (e.g. Community Hall)..."
+                      className="w-full text-sm rounded-xl border-2 border-orange-400 bg-orange-50/50 p-2.5 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 font-semibold"
+                      required
+                    />
+                  ) : (
+                    <div className="flex items-center text-xs text-slate-500 px-3 py-2 bg-slate-50 rounded-xl border border-slate-200">
+                      <span>✓ Standard DPI Sector Classified</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* State & District */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Infrastructure Sector / Scheme:
+                    State:
                   </label>
                   <select
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value as IssueCategory)}
+                    value={stateName}
+                    onChange={(e) => setStateName(e.target.value)}
                     className="w-full text-sm rounded-xl border border-slate-300 p-2.5 bg-white focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
                   >
-                    <option value="Piped Water / Jal Jeevan Mission">Piped Water / Jal Jeevan Mission</option>
-                    <option value="Rural & State Roads / PMGSY">Rural & State Roads / PMGSY</option>
-                    <option value="Primary Healthcare / Ayushman Bharat">Primary Healthcare / Ayushman Bharat</option>
-                    <option value="School Infrastructure / Samagra Shiksha">School Infrastructure / Samagra Shiksha</option>
-                    <option value="Power & Solar / PM Surya Ghar">Power & Solar / PM Surya Ghar</option>
-                    <option value="Sanitation & Solid Waste / Swachh Bharat">Sanitation & Solid Waste / Swachh Bharat</option>
-                    <option value="Flood & Drainage Resilience">Flood & Drainage Resilience</option>
+                    {ALL_INDIAN_STATES.map((st) => (
+                      <option key={st} value={st}>
+                        {st}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    State & District:
+                    District / City:
                   </label>
-                  <div className="flex gap-2">
-                    <select
-                      value={stateName}
-                      onChange={(e) => setStateName(e.target.value)}
-                      className="w-1/2 text-sm rounded-xl border border-slate-300 p-2.5 bg-white focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
-                    >
-                      {ALL_INDIAN_STATES.map((st) => (
-                        <option key={st} value={st}>
-                          {st}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      type="text"
-                      value={district}
-                      onChange={(e) => setDistrict(e.target.value)}
-                      placeholder="District"
-                      className="w-1/2 text-sm rounded-xl border border-slate-300 p-2.5 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
-                    />
-                  </div>
+                  <input
+                    type="text"
+                    value={district}
+                    onChange={(e) => setDistrict(e.target.value)}
+                    placeholder="e.g. Nadia, Ranaghat, Patna"
+                    className="w-full text-sm rounded-xl border border-slate-300 p-2.5 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
+                    required
+                  />
                 </div>
               </div>
 
+              {/* Block / Ward & PIN Code with Live GPS auto-detect */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Block / Panchayat / Ward:
+                    Block / Panchayat / Ward / Area:
                   </label>
                   <input
                     type="text"
                     value={blockOrWard}
                     onChange={(e) => setBlockOrWard(e.target.value)}
-                    placeholder="e.g., Nanpara Block, Gram Panchayat 4"
+                    placeholder="e.g., Ranaghat I Block, Ward 4"
                     className="w-full text-sm rounded-xl border border-slate-300 p-2.5 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
                   />
                 </div>
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-xs font-bold text-slate-700">
-                      PIN Code (Auto-locates GPS):
+                      PIN Code:
                     </label>
                     <button
                       type="button"
@@ -824,7 +886,7 @@ export const CitizenPortal: React.FC<CitizenPortalProps> = ({
                     type="text"
                     value={pinCode}
                     onChange={(e) => setPinCode(e.target.value)}
-                    placeholder="PIN Code"
+                    placeholder="e.g. 741201"
                     className="w-full text-sm rounded-xl border border-slate-300 p-2.5 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
                   />
                 </div>
@@ -866,31 +928,77 @@ export const CitizenPortal: React.FC<CitizenPortalProps> = ({
                 className="w-full py-3.5 px-6 rounded-xl font-extrabold text-sm text-white bg-gradient-to-r from-orange-600 via-orange-500 to-amber-600 hover:from-orange-700 hover:to-amber-700 shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
               >
                 <ShieldCheck className="w-5 h-5" />
-                <span>Submit Grievance to National DPI & Hotspot Aggregator</span>
+                <span>Lodge Grievance for Neighborhood Review</span>
               </button>
             </div>
           </form>
         </div>
 
-        {/* Right Column: Live Citizen Distress Stream & Telemetry (5 cols) */}
-        <div className="lg:col-span-5 space-y-6">
-          {/* Header & Category Filter */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5">
-            <div className="flex items-center justify-between mb-3">
+        {/* Right Column: Live Demand Stream, Review Queue & Resolved Works (5 cols) */}
+        <div className="lg:col-span-5 space-y-4">
+          {/* Feed Navigation Tabs (Published / Review Queue / Resolved) */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-4 space-y-3">
+            <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping"></span>
-                  <span>Live Citizen Demands Feed</span>
+                  <span>Citizen Demand Matrix</span>
                 </h3>
-                <p className="text-xs text-slate-500">Real-time telemetry across Indian states</p>
+                <p className="text-xs text-slate-500">Community verified & officer monitored</p>
               </div>
-              <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
-                {requests.length} Active Records
-              </span>
+            </div>
+
+            {/* 3 Main Pipeline Tabs */}
+            <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-100 rounded-xl text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setFeedTab('published')}
+                className={`py-2 px-1 text-center rounded-lg transition cursor-pointer flex flex-col items-center gap-0.5 ${
+                  feedTab === 'published'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span>🏛️ Live Hotspots</span>
+                <span className="text-[10px] font-mono text-emerald-600">({publishedRequests.length})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setFeedTab('review_queue')}
+                className={`py-2 px-1 text-center rounded-lg transition cursor-pointer flex flex-col items-center gap-0.5 ${
+                  feedTab === 'review_queue'
+                    ? 'bg-white text-amber-700 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span>👥 Needs Review</span>
+                <span className="text-[10px] font-mono text-amber-600">({reviewQueueRequests.length})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setFeedTab('resolved')}
+                className={`py-2 px-1 text-center rounded-lg transition cursor-pointer flex flex-col items-center gap-0.5 ${
+                  feedTab === 'resolved'
+                    ? 'bg-white text-emerald-700 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span>✅ Resolved Works</span>
+                <span className="text-[10px] font-mono text-emerald-600">({resolvedRequests.length})</span>
+              </button>
+            </div>
+
+            {/* Explanatory subtitle for current tab */}
+            <div className="text-[11px] text-slate-500 bg-slate-50 p-2 rounded-lg border border-slate-100">
+              {feedTab === 'published' && '✓ Verified demands with ≥3 community endorsements, active on National Map & DPR queue.'}
+              {feedTab === 'review_queue' && '⏳ Newly lodged grievances. Like & endorse to approve them to the Live Map!'}
+              {feedTab === 'resolved' && '🎉 Completed civil repairs marked by Officers or confirmed by 3+ local citizens.'}
             </div>
 
             {/* Quick Filter chips */}
-            <div className="flex flex-wrap gap-1.5 pt-2 border-t border-slate-100 text-xs">
+            <div className="flex flex-wrap gap-1.5 pt-1 text-xs">
               <button
                 onClick={() => setSelectedFilterCategory('all')}
                 className={`px-2.5 py-1 rounded-lg font-semibold transition cursor-pointer ${
@@ -944,112 +1052,214 @@ export const CitizenPortal: React.FC<CitizenPortalProps> = ({
             </div>
           </div>
 
-          {/* Cards List */}
-          <div className="space-y-4 max-h-[640px] overflow-y-auto pr-1">
-            {filteredRequests.map((req) => (
-              <div
-                key={req.id}
-                className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs hover:shadow-md transition space-y-3"
-              >
-                {/* Card Top: Tracking Number & Severity */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-bold text-blue-900 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                      {req.trackingNumber}
-                    </span>
-                    <span className="text-[10px] text-slate-400">• {req.timestamp}</span>
-                  </div>
-                  <span
-                    className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full ${
-                      req.severity === 'Critical'
-                        ? 'bg-rose-100 text-rose-700 border border-rose-200'
-                        : req.severity === 'High'
-                        ? 'bg-orange-100 text-orange-700 border border-orange-200'
-                        : 'bg-slate-100 text-slate-700'
-                    }`}
-                  >
-                    {req.severity} Priority
-                  </span>
-                </div>
-
-                {/* Card Title & Location */}
-                <div>
-                  <h4 className="text-sm font-bold text-slate-900 leading-snug">
-                    {req.title}
-                  </h4>
-                  <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-1">
-                    <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                    <span>
-                      {req.blockOrWard}, {req.district}, {req.state} ({req.pinCode})
-                    </span>
-                  </div>
-                </div>
-
-                {/* Photo Thumbnail if available */}
-                {req.imageUrl && (
-                  <div className="w-full h-32 rounded-lg overflow-hidden border border-slate-200">
-                    <img
-                      src={req.imageUrl}
-                      alt={req.title}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                )}
-
-                {/* Original Description & Translated audio player */}
-                <p className="text-xs text-slate-600 line-clamp-2 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
-                  {req.description}
-                </p>
-
-                {/* Demographic & Gati Shakti Impact Tags */}
-                <div className="flex flex-wrap gap-2 text-[11px] text-slate-600">
-                  <span className="px-2 py-0.5 rounded bg-slate-100 font-medium">
-                    👥 {req.demographicImpact.populationCovered.toLocaleString()} Citizens
-                  </span>
-                  {req.demographicImpact.aspirationalDistrict && (
-                    <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-800 font-bold border border-amber-200">
-                      ★ NITI Aspirational District
-                    </span>
-                  )}
-                  <span className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 font-semibold">
-                    ⚡ Gati Shakti: {req.demographicImpact.gatiShaktiAlignmentScore}%
-                  </span>
-                </div>
-
-                {/* Action Bar: Upvote, Voice Playback & Convert to DPR */}
-                <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => onUpvoteRequest(req.id)}
-                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold transition cursor-pointer"
-                    >
-                      <ThumbsUp className="w-3.5 h-3.5 text-orange-600" />
-                      <span>{req.upvotes}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => playTextToSpeech(req.translatedDescription || req.description)}
-                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition cursor-pointer"
-                      title="Listen via Text to Speech"
-                    >
-                      <Volume2 className="w-3.5 h-3.5" />
-                      <span>Listen</span>
-                    </button>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => onSelectRequestForDPR(req)}
-                    className="flex items-center gap-1 font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer"
-                  >
-                    <span>Draft DPR</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+          {/* Cards Feed */}
+          <div className="space-y-3.5 max-h-[660px] overflow-y-auto pr-1">
+            {displayedRequests.length === 0 ? (
+              <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-400 space-y-2">
+                <CheckCircle2 className="w-10 h-10 text-slate-300 mx-auto" />
+                <p className="text-xs font-semibold">No records in this tab matching the filter.</p>
               </div>
-            ))}
+            ) : (
+              displayedRequests.map((req) => (
+                <div
+                  key={req.id}
+                  className={`bg-white rounded-xl border p-4 shadow-xs hover:shadow-md transition space-y-3 ${
+                    req.isResolved
+                      ? 'border-emerald-300 bg-emerald-50/20'
+                      : !req.isPublished
+                      ? 'border-amber-300 bg-amber-50/20'
+                      : 'border-slate-200'
+                  }`}
+                >
+                  {/* Card Top: Tracking Number & Status Badge */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs font-bold text-blue-900 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                        {req.trackingNumber}
+                      </span>
+                      <span className="text-[10px] text-slate-400">• {req.timestamp}</span>
+                    </div>
+
+                    {req.isResolved ? (
+                      <span className="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                        <CheckCheck className="w-3 h-3 text-emerald-600" /> Resolved
+                      </span>
+                    ) : !req.isPublished ? (
+                      <span className="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1">
+                        <Users className="w-3 h-3 text-amber-600" /> Review ({req.upvotes}/3 Likes)
+                      </span>
+                    ) : (
+                      <span
+                        className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full ${
+                          req.severity === 'Critical'
+                            ? 'bg-rose-100 text-rose-700 border border-rose-200'
+                            : req.severity === 'High'
+                            ? 'bg-orange-100 text-orange-700 border border-orange-200'
+                            : 'bg-slate-100 text-slate-700'
+                        }`}
+                      >
+                        {req.severity} Priority
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Card Title & Category Tag */}
+                  <div>
+                    <div className="inline-block px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 mb-1">
+                      {req.category}
+                    </div>
+                    <h4 className="text-sm font-bold text-slate-900 leading-snug">
+                      {req.title}
+                    </h4>
+                    <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-1">
+                      <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span>
+                        {req.blockOrWard}, {req.district}, {req.state} ({req.pinCode})
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Photo Thumbnail if available */}
+                  {req.imageUrl && (
+                    <div className="w-full h-32 rounded-lg overflow-hidden border border-slate-200">
+                      <img
+                        src={req.imageUrl}
+                        alt={req.title}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  )}
+
+                  {/* Description */}
+                  <p className="text-xs text-slate-600 line-clamp-2 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                    {req.description}
+                  </p>
+
+                  {/* Resolution Notes if Resolved */}
+                  {req.isResolved && (
+                    <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 space-y-1">
+                      <div className="flex justify-between text-[11px] font-bold">
+                        <span>✅ Completed Work Sanction</span>
+                        <span>{req.resolvedAt}</span>
+                      </div>
+                      <p className="text-[11px] text-emerald-800">{req.resolutionNotes || 'Civil repair verified & completed.'}</p>
+                      <p className="text-[10px] text-emerald-600 font-semibold">Authority: {req.resolvedBy}</p>
+                    </div>
+                  )}
+
+                  {/* Community Review Progress Bar if in Review Queue */}
+                  {!req.isPublished && !req.isResolved && (
+                    <div className="space-y-1 bg-amber-50/70 p-2.5 rounded-lg border border-amber-200/80">
+                      <div className="flex justify-between text-[11px] font-bold text-amber-900">
+                        <span>Community Endorsement Progress:</span>
+                        <span>{req.upvotes} / {req.endorsementsNeeded || 3} Likes</span>
+                      </div>
+                      <div className="w-full h-2 rounded-full bg-amber-200 overflow-hidden">
+                        <div
+                          className="h-full bg-amber-500 rounded-full transition-all duration-500"
+                          style={{ width: `${Math.min(100, ((req.upvotes || 1) / (req.endorsementsNeeded || 3)) * 100)}%` }}
+                        ></div>
+                      </div>
+                      <p className="text-[10px] text-amber-700">
+                        {3 - (req.upvotes || 1) > 0
+                          ? `Needs ${3 - (req.upvotes || 1)} more citizen endorsement to publish on live map.`
+                          : 'Threshold reached! Promoting to live map...'}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Action Bar: Endorse, Listen, Confirm Resolved & Officer Tools */}
+                  <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-2">
+                      {/* Community Endorse Button */}
+                      {!req.isResolved && (
+                        <button
+                          type="button"
+                          onClick={() => onUpvoteRequest(req.id)}
+                          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer shadow-xs ${
+                            !req.isPublished
+                              ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                              : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                          }`}
+                          title="Endorse this grievance to help verify & publish it"
+                        >
+                          <ThumbsUp className="w-3.5 h-3.5" />
+                          <span>{!req.isPublished ? `Endorse (${req.upvotes}/3)` : `${req.upvotes} Likes`}</span>
+                        </button>
+                      )}
+
+                      {/* Text to Speech */}
+                      <button
+                        type="button"
+                        onClick={() => playTextToSpeech(req.translatedDescription || req.description)}
+                        className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition cursor-pointer"
+                        title="Listen via Speech"
+                      >
+                        <Volume2 className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Listen</span>
+                      </button>
+                    </div>
+
+                    {/* Officer Actions & Community Resolution Controls */}
+                    <div className="flex items-center gap-2">
+                      {/* Officer Fast-Track Button */}
+                      {userRole === 'official' && !req.isPublished && !req.isResolved && onFastTrackApprove && (
+                        <button
+                          type="button"
+                          onClick={() => onFastTrackApprove(req.id)}
+                          className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition cursor-pointer flex items-center gap-1"
+                        >
+                          <Zap className="w-3 h-3 text-amber-300" />
+                          <span>Fast-Track</span>
+                        </button>
+                      )}
+
+                      {/* Officer Mark as Resolved Button */}
+                      {userRole === 'official' && !req.isResolved && onResolveRequest && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const note = prompt('Enter official resolution remarks (e.g., Road resurfacing completed, pipeline repaired):', 'Civil infrastructure repair verified and completed.');
+                            if (note !== null) {
+                              onResolveRequest(req.id, note, true);
+                            }
+                          }}
+                          className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition cursor-pointer flex items-center gap-1"
+                        >
+                          <CheckCheck className="w-3.5 h-3.5" />
+                          <span>Mark Resolved</span>
+                        </button>
+                      )}
+
+                      {/* Citizen Confirm Resolution Button */}
+                      {userRole === 'citizen' && !req.isResolved && req.isPublished && onConfirmResolution && (
+                        <button
+                          type="button"
+                          onClick={() => onConfirmResolution(req.id)}
+                          className="px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold transition cursor-pointer flex items-center gap-1"
+                          title="Confirm if this problem has been repaired in your area"
+                        >
+                          <CheckCheck className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Fixed? ({req.resolutionLikes || 0}/3)</span>
+                        </button>
+                      )}
+
+                      {/* Draft DPR Button */}
+                      {userRole === 'official' && !req.isResolved && (
+                        <button
+                          type="button"
+                          onClick={() => onSelectRequestForDPR(req)}
+                          className="flex items-center gap-1 font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer"
+                        >
+                          <span>Draft DPR</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>

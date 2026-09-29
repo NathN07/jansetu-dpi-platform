@@ -4,7 +4,8 @@ import {
   DetailedProjectReport, 
   DistrictMetric, 
   IssueCategory, 
-  LanguageCode 
+  LanguageCode,
+  RequestStatus
 } from './types';
 import { INITIAL_REQUESTS, INITIAL_DPRS, DISTRICT_METRICS } from './data/mockData';
 import { isLiveAiAvailable } from './services/gemini';
@@ -106,7 +107,73 @@ export const App: React.FC = () => {
 
   const handleUpvoteRequest = (id: string) => {
     setRequests((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, upvotes: r.upvotes + 1 } : r))
+      prev.map((r) => {
+        if (r.id === id) {
+          const nextUpvotes = (r.upvotes || 0) + 1;
+          const needed = r.endorsementsNeeded ?? 3;
+          const isNowPublished = r.isPublished || nextUpvotes >= needed;
+          return {
+            ...r,
+            upvotes: nextUpvotes,
+            isPublished: isNowPublished,
+            status: isNowPublished && r.status === 'Pending_Community_Review' ? 'AI_Verified' : r.status
+          };
+        }
+        return r;
+      })
+    );
+  };
+
+  const handleResolveRequest = (id: string, notes?: string, byOfficer: boolean = false) => {
+    setRequests((prev) =>
+      prev.map((r) => {
+        if (r.id === id) {
+          return {
+            ...r,
+            isResolved: true,
+            status: 'Resolved' as RequestStatus,
+            resolvedAt: new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
+            resolvedBy: byOfficer ? 'District Magistrate / PWD Officer' : 'Neighborhood Community Consensus',
+            resolutionNotes: notes || 'Infrastructure defect repair verified and sanctioned.'
+          };
+        }
+        return r;
+      })
+    );
+  };
+
+  const handleConfirmResolution = (id: string) => {
+    setRequests((prev) =>
+      prev.map((r) => {
+        if (r.id === id) {
+          const nextLikes = (r.resolutionLikes || 0) + 1;
+          const isNowResolved = nextLikes >= 3 || r.isResolved;
+          return {
+            ...r,
+            resolutionLikes: nextLikes,
+            isResolved: isNowResolved,
+            status: isNowResolved ? 'Resolved' : r.status,
+            resolvedAt: isNowResolved ? 'Just now' : r.resolvedAt,
+            resolvedBy: isNowResolved ? 'Confirmed by Neighborhood Citizens' : r.resolvedBy
+          };
+        }
+        return r;
+      })
+    );
+  };
+
+  const handleFastTrackApprove = (id: string) => {
+    setRequests((prev) =>
+      prev.map((r) => {
+        if (r.id === id) {
+          return {
+            ...r,
+            isPublished: true,
+            status: r.status === 'Pending_Community_Review' ? 'AI_Verified' : r.status
+          };
+        }
+        return r;
+      })
     );
   };
 
@@ -183,6 +250,10 @@ export const App: React.FC = () => {
             requests={requests}
             onAddRequest={handleAddRequest}
             onUpvoteRequest={handleUpvoteRequest}
+            onResolveRequest={handleResolveRequest}
+            onConfirmResolution={handleConfirmResolution}
+            onFastTrackApprove={handleFastTrackApprove}
+            userRole={userRole}
             selectedLanguage={selectedLanguage}
             onSelectRequestForDPR={handleSelectRequestForDPR}
           />
@@ -192,6 +263,8 @@ export const App: React.FC = () => {
           <HotspotMap
             requests={requests}
             onSelectDistrictForDPR={handleSelectDistrictForDPR}
+            onSelectRequestForDPR={handleSelectRequestForDPR}
+            onResolveRequest={handleResolveRequest}
           />
         )}
 
@@ -204,7 +277,9 @@ export const App: React.FC = () => {
           />
         )}
 
-        {currentTab === 'whatsapp' && <WhatsAppSimulator />}
+        {currentTab === 'whatsapp' && (
+          <WhatsAppSimulator onAddRequest={handleAddRequest} />
+        )}
 
         {currentTab === 'analytics' && userRole === 'official' && <NationalAnalytics />}
       </main>

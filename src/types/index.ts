@@ -6,19 +6,25 @@ export interface LanguageOption {
   nativeName: string;
 }
 
-export type IssueCategory = 
+export type PresetIssueCategory = 
   | 'Piped Water / Jal Jeevan Mission'
   | 'Rural & State Roads / PMGSY'
   | 'Primary Healthcare / Ayushman Bharat'
   | 'School Infrastructure / Samagra Shiksha'
   | 'Power & Solar / PM Surya Ghar'
   | 'Sanitation & Solid Waste / Swachh Bharat'
-  | 'Flood & Drainage Resilience';
+  | 'Flood & Drainage Resilience'
+  | 'Street Lighting & Public Safety'
+  | 'Public Transport & Connectivity'
+  | 'Irrigation & Agriculture'
+  | 'Digital & Telecom Connectivity';
+
+export type IssueCategory = PresetIssueCategory | string;
 
 export type SeverityLevel = 'Low' | 'Medium' | 'High' | 'Critical';
 
 export type RequestStatus = 
-  | 'Submitted'
+  | 'Pending_Community_Review'
   | 'AI_Verified'
   | 'Hotspot_Clustered'
   | 'DPR_Drafted'
@@ -44,6 +50,7 @@ export interface CitizenRequest {
   originalLanguage: LanguageCode;
   translatedDescription?: string;
   category: IssueCategory;
+  customCategoryName?: string;
   state: string;
   district: string;
   blockOrWard: string;
@@ -58,7 +65,14 @@ export interface CitizenRequest {
   citizenName: string;
   citizenPhoneMasked: string;
   timestamp: string;
-  upvotes: number;
+  upvotes: number; // Community endorsement likes
+  endorsementsNeeded?: number; // e.g. 3 to publish on live map
+  isPublished?: boolean; // When true, appears on live map & officer feed
+  isResolved?: boolean;
+  resolvedAt?: string;
+  resolvedBy?: string;
+  resolutionNotes?: string;
+  resolutionLikes?: number; // Citizen confirmations that issue is fixed
   demographicImpact: DemographicImpact;
   aiVerification?: {
     verified: boolean;
