@@ -119,14 +119,6 @@ npm install
 npm run dev
 ```
 
-### 3. Google Gemini API Key (Optional)
-The platform comes equipped with an **intelligent smart edge inference demo mode** out of the box. To test with live Gemini API requests:
-- Click the **"AI: Smart Demo / Key"** button on the top right navigation bar.
-- Paste your Gemini API key from [Google AI Studio](https://aistudio.google.com/app/apikey).
-- Or create a `.env` file:
-```env
-VITE_GEMINI_API_KEY=your_gemini_api_key_here
-```
 
 ---
 
