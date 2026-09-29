@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <circle cx="50" cy="50" r="46" fill="#001A44" stroke="#F97316" stroke-width="4"/>
+  <!-- Ashoka Chakra 24 spokes stylized center -->
+  <circle cx="50" cy="50" r="18" stroke="#38BDF8" stroke-width="3" fill="#0284C7" fill-opacity="0.1"/>
+  <circle cx="50" cy="50" r="4" fill="#F97316"/>
+  <!-- Bridge / Setu curves -->
+  <path d="M20 64C35 48 65 48 80 64" stroke="#22C55E" stroke-width="5" stroke-linecap="round"/>
+  <path d="M26 72C40 58 60 58 74 72" stroke="#F97316" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="50" cy="30" r="6" fill="#38BDF8"/>
+  <path d="M50 36V46" stroke="#38BDF8" stroke-width="3" stroke-linecap="round"/>
+</svg>
