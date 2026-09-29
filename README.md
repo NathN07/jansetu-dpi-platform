@@ -7,7 +7,7 @@
 
 ---
 
-## 📌 2-3 Line Brief Description (For Hackathon Submission Form)
+## 📌 2-3 Line Brief Description
 > **JanSetu AI** is a sovereign Digital Public Good that bridges the chasm between raw citizen suffering and national infrastructure budgets. It ingests grievances in 10+ Indian languages via voice, photo inspection (Gemini Multimodal), and WhatsApp/IVR, clusters demand hotspots against NITI Aayog and PM Gati Shakti indices, and autonomously generates official CPWD-compliant Detailed Project Reports (DPRs) to compress capital project sanctions from 9 months to under 48 hours.
 
 ---
