@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { CitizenRequest, IssueCategory, LanguageCode, SeverityLevel } from '../types';
-import { ALL_INDIAN_STATES } from '../data/mockData';
+import { ALL_INDIAN_STATES, resolveLocationCoordinates } from '../data/mockData';
 import { 
   Mic, 
   MicOff, 
@@ -308,10 +308,7 @@ export const CitizenPortal: React.FC<CitizenPortalProps> = ({
       district,
       blockOrWard,
       pinCode,
-      coordinates: [
-        26.5 + (Math.random() - 0.5) * 4,
-        82.0 + (Math.random() - 0.5) * 5
-      ],
+      coordinates: resolveLocationCoordinates(district, stateName),
       status: 'AI_Verified',
       severity: (aiAnalysisPreview?.severity as SeverityLevel) || 'High',
       urgencyScore: aiAnalysisPreview?.urgencyScore || 88,

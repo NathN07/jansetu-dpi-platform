@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LanguageCode } from '../types';
+import { CitizenRequest, LanguageCode } from '../types';
 import { 
   Send, 
   Mic, 
@@ -12,11 +12,17 @@ import {
   Smile, 
   Sparkles, 
   ShieldCheck,
-  RefreshCw
+  RefreshCw,
+  MapPin
 } from 'lucide-react';
 import { generateWhatsAppBotReply } from '../services/gemini';
+import { resolveLocationCoordinates } from '../data/mockData';
 
-export const WhatsAppSimulator: React.FC = () => {
+interface WhatsAppSimulatorProps {
+  onAddRequest?: (req: CitizenRequest) => void;
+}
+
+export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({ onAddRequest }) => {
   const [messages, setMessages] = useState<
     {
       id: string;
@@ -37,7 +43,7 @@ export const WhatsAppSimulator: React.FC = () => {
     {
       id: 'm1',
       sender: 'bot',
-      text: '🙏 नमस्ते! JanSetu AI नागरिक सेवा केंद्र में आपका स्वागत है। आप अपनी स्थानीय भाषा में सड़क, पानी, बिजली, स्कूल या स्वास्थ्य संबंधी समस्या लिख सकते हैं या बोलकर ऑडियो भेज सकते हैं।',
+      text: '🙏 नमस्ते / Hello! JanSetu AI नागरिक सेवा केंद्र में आपका स्वागत है। आप अपनी स्थानीय भाषा (বাংলা, हिन्दी, English, தமிழ், etc.) में सड़क, पानी, बिजली, स्कूल या स्वास्थ्य संबंधी समस्या लिख सकते हैं या ऑडियो भेज सकते हैं।',
       time: '10:14 AM'
     }
   ]);
@@ -68,6 +74,49 @@ export const WhatsAppSimulator: React.FC = () => {
       const result = await generateWhatsAppBotReply(textToSend, newHistory);
       const trackingNumber = `JS-WA-2026-${Math.floor(1000 + Math.random() * 9000)}`;
 
+      // Create official citizen request for National Map and Database
+      if (onAddRequest) {
+        const coords = resolveLocationCoordinates(result.district, result.state);
+        const newReq: CitizenRequest = {
+          id: `req-wa-${Date.now()}`,
+          trackingNumber,
+          title: `${result.category} reported via WhatsApp in ${result.district}, ${result.state}`,
+          description: textToSend,
+          originalLanguage: 'en',
+          translatedDescription: textToSend,
+          category: result.category,
+          state: result.state,
+          district: result.district,
+          blockOrWard: `${result.district} Sub-Division`,
+          pinCode: '741201',
+          coordinates: coords,
+          status: 'Hotspot_Clustered',
+          severity: result.severity,
+          urgencyScore: result.urgencyScore,
+          inputChannel: options?.isVoice ? 'voice' : 'whatsapp',
+          citizenName: 'WhatsApp Citizen',
+          citizenPhoneMasked: '+91 98****5521',
+          timestamp: 'Just now',
+          upvotes: 1,
+          demographicImpact: {
+            populationCovered: Math.floor(14000 + Math.random() * 8000),
+            aspirationalDistrict: true,
+            bplPercentage: 54.0,
+            scStPercentage: 35.0,
+            gatiShaktiAlignmentScore: 90
+          },
+          aiVerification: {
+            verified: true,
+            confidence: 0.98,
+            detectedDefect: `Field distress ping received via WhatsApp for ${result.category}`,
+            hazardIndex: Number((result.urgencyScore / 10).toFixed(1)),
+            recommendedMinistry: 'Ministry of Rural Development / Jal Shakti',
+            notes: `Captured via WhatsApp Citizen Bot for ${result.district}, ${result.state}. Directly added to National Hotspot Map.`
+          }
+        };
+        onAddRequest(newReq);
+      }
+
       setIsBotTyping(false);
       const botReply = {
         id: `bot-${Date.now()}`,
@@ -88,13 +137,13 @@ export const WhatsAppSimulator: React.FC = () => {
       const fallbackReply = {
         id: `bot-${Date.now()}`,
         sender: 'bot' as const,
-        text: `✅ आपकी समस्या दर्ज कर ली गई है और जिला नोडल अधिकारी को प्रेषित कर दी गई है।`,
+        text: `✅ Your issue has been registered into the National Hotspot Map and forwarded to the District Magistrate.`,
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         ticketCard: {
           trackingNumber: `JS-WA-2026-${Math.floor(1000 + Math.random() * 9000)}`,
           category: 'Rural & State Roads / PMGSY',
-          district: 'Bahraich',
-          state: 'Uttar Pradesh',
+          district: 'Nadia (Ranaghat)',
+          state: 'West Bengal',
           status: 'AI_Verified'
         }
       };
@@ -109,13 +158,13 @@ export const WhatsAppSimulator: React.FC = () => {
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 mb-2">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Omnichannel DPI Ingestion</span>
+            <span>Live Geospatial Ingestion Gateway</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-            WhatsApp & IVR Voice Assistant Simulation
+            WhatsApp & IVR Citizen Bot
           </h1>
           <p className="text-xs sm:text-sm text-emerald-200/80 mt-1 max-w-2xl">
-            Powered by <strong>Gemini 3.8 / 2.5 Flash</strong>. It dynamically understands any Indian language (Hindi, Bengali, Tamil, Telugu, Marathi, English, etc.) and provides instant conversational redressal.
+            Powered by <strong>Google Gemini AI</strong>. Any issue submitted here is <strong>instantly plotted onto the National Hotspot Map</strong> at the exact location provided.
           </p>
         </div>
 
@@ -128,32 +177,35 @@ export const WhatsAppSimulator: React.FC = () => {
             <button
               onClick={() =>
                 sendMessage(
-                  'हमारे गाँव में मुख्य पेयजल पाइपलाइन पिछले 10 दिनों से टूटी हुई है, कृपया तुरंत नया पाइप लगायें।',
+                  'There is a serious water contamination and broken pipe issue in Ranaghat, West Bengal',
                   {}
                 )
               }
               className="px-3 py-1.5 rounded-lg bg-emerald-900/80 hover:bg-emerald-800 text-emerald-200 text-xs font-semibold border border-emerald-700/50 transition cursor-pointer"
             >
-              💧 Hindi (Water Crisis)
+              💧 Ranaghat, West Bengal (Water)
             </button>
             <button
               onClick={() =>
                 sendMessage(
-                  'ঝরিগাঁও কালভার্ট ব্রিজ বন্যায় ভেঙে গেছে, অ্যাম্বুলেন্স চলাচল বন্ধ হয়ে গেছে।',
+                  'আমাদের রানাঘাট ১ নং ব্লকের কালভার্ট ব্রিজ বন্যায় ভেঙে গেছে, জরুরি মেরামত চাই',
                   {}
                 )
               }
               className="px-3 py-1.5 rounded-lg bg-emerald-900/80 hover:bg-emerald-800 text-emerald-200 text-xs font-semibold border border-emerald-700/50 transition cursor-pointer"
             >
-              🌉 Bengali (Bridge Washout)
+              🌉 Bengali Voice/Text
             </button>
             <button
               onClick={() =>
-                sendMessage('மருத்துவமனை மேற்கூரை இடிந்து விழுந்தது, அவசர உதவி தேவை', {})
+                sendMessage(
+                  'गाँव नानपारा में मुख्य सड़क टूट गई है, कृपया तुरंत मरम्मत करें',
+                  {}
+                )
               }
               className="px-3 py-1.5 rounded-lg bg-emerald-900/80 hover:bg-emerald-800 text-emerald-200 text-xs font-semibold border border-emerald-700/50 transition cursor-pointer"
             >
-              🏥 Tamil (Clinic Damage)
+              🛣️ Hindi (Road Issue)
             </button>
           </div>
         </div>
@@ -180,7 +232,7 @@ export const WhatsAppSimulator: React.FC = () => {
                   <ShieldCheck className="w-3.5 h-3.5 text-emerald-300" />
                 </h4>
                 <p className="text-[10px] text-emerald-100">
-                  {isBotTyping ? 'typing...' : 'Official DPI Citizen Line'}
+                  {isBotTyping ? 'typing...' : 'Connected to National Map'}
                 </p>
               </div>
             </div>
@@ -223,11 +275,12 @@ export const WhatsAppSimulator: React.FC = () => {
                         <span>DPI Token:</span>
                         <span>{m.ticketCard.trackingNumber}</span>
                       </div>
-                      <div className="text-slate-600">
-                        {m.ticketCard.district}, {m.ticketCard.state}
+                      <div className="text-slate-700 font-semibold flex items-center gap-1">
+                        <MapPin className="w-3 h-3 text-emerald-600" />
+                        <span>{m.ticketCard.district}, {m.ticketCard.state}</span>
                       </div>
                       <div className="text-emerald-700 font-bold flex items-center gap-1">
-                        <CheckCheck className="w-3 h-3" /> Clustered in National DPI
+                        <CheckCheck className="w-3 h-3" /> Plotted on National Map
                       </div>
                     </div>
                   )}
@@ -241,9 +294,9 @@ export const WhatsAppSimulator: React.FC = () => {
             ))}
 
             {isBotTyping && (
-              <div className="flex items-center gap-1.5 bg-white px-3 py-2 rounded-lg w-36 text-slate-500 text-xs shadow-xs">
+              <div className="flex items-center gap-1.5 bg-white px-3 py-2 rounded-lg w-40 text-slate-500 text-xs shadow-xs">
                 <RefreshCw className="w-3 h-3 animate-spin text-emerald-600" />
-                <span className="text-[11px]">Gemini AI is analyzing...</span>
+                <span className="text-[11px]">Gemini is analyzing...</span>
               </div>
             )}
           </div>
@@ -257,7 +310,7 @@ export const WhatsAppSimulator: React.FC = () => {
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-              placeholder="Type message in any language..."
+              placeholder="Type message with location..."
               className="flex-1 bg-white rounded-full py-1.5 px-3.5 text-xs text-slate-800 focus:outline-hidden border border-slate-300"
             />
             {inputText.trim() ? (
@@ -270,12 +323,12 @@ export const WhatsAppSimulator: React.FC = () => {
             ) : (
               <button
                 onClick={() =>
-                  sendMessage('गाँव में 15 दिनों से पीने का पानी नहीं आ रहा है (Voice Note)', {
+                  sendMessage('Ranaghat West Bengal main road has large potholes disrupting vehicles', {
                     isVoice: true
                   })
                 }
                 className="w-8 h-8 rounded-full bg-[#00A884] text-white flex items-center justify-center cursor-pointer shadow-xs hover:bg-[#008f6f]"
-                title="Simulate Voice Recording"
+                title="Simulate Voice Note"
               >
                 <Mic className="w-4 h-4" />
               </button>
