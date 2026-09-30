@@ -52,8 +52,6 @@
 - Live SQL query runner against simulated BigQuery telemetry datasets (`jansetu-dpi.telemetry`).
 - Real-time reconciliation with `data.gov.in`, NITI Aayog Delta rankings, and GeM (Government e-Marketplace).
 
-### 6. 🏆 Built-in 12-Slide Pitch Deck Modal
-- Complete hackathon pitch presentation embedded directly into the application with interactive carousel navigation!
 
 ---
 
